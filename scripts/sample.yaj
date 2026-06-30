@@ -1,0 +1,53 @@
+
+INIT
+    "=== v0.3 demo : arithmetic & bitwise ===" -> STDOUT
+
+    // --- 算術と優先順位（* / % が + - より上、括弧で変更） ---
+    "7 * 6 + 1      = ", 7 * 6 + 1 -> STDOUT          // 43
+    "(2 + 3) * 4    = ", (2 + 3) * 4 -> STDOUT        // 20
+    "20 / 6 = ", 20 / 6, " , 20 % 6 = ", 20 % 6 -> STDOUT  // 可変arity: 3 と 2
+
+    // --- ビット演算と 16進/2進/桁区切りリテラル ---
+    "0xFF & 0x0F    = ", 0xFF & 0x0F -> STDOUT        // 15
+    "0b1010 | 0b0101= ", 0b1010 | 0b0101 -> STDOUT    // 15
+    "1 << 8         = ", 1 << 8 -> STDOUT             // 256
+    "~0 (all bits)  = ", ~0 -> STDOUT                 // -1
+    "1_000_000 / 1000 = ", 1_000_000 / 1000 -> STDOUT // 1000
+
+    // --- 0除算は 0 で継続し、STATUS に ERR_DIVZERO を立てる（§9,§12） ---
+    "10 / 0 (safe)  = ", 10 / 0 -> STDOUT             // 0
+    (STATUS & ERR_DIVZERO) -> IFYES
+        "  ! ERR_DIVZERO flagged -> clearing" -> STDOUT
+        ERR_DIVZERO -> CLEAR_ERR
+    END
+
+    "=== v0.3 demo : strings ===" -> STDOUT
+
+    // --- 文字列スロット代入・コピー・永続保存（§4） ---
+    "NO MUSIC ", ", NO LIFE" -> MERGER                // 結果は SRESULT
+    SRESULT -> SGVAR[0]                                // またいで保持する分は永続スロットへ
+    "merged   : ", SGVAR[0] -> STDOUT                  // NO MUSIC , NO LIFE
+
+    // --- SLICER は 1始まり・(開始,長さ)（§3） ---
+    SGVAR[0], 1, 8 -> SLICER                           // "NO MUSIC"
+    "sliced   : ", SRESULT -> STDOUT
+
+    // --- COUNTER はバイト長を RESULT に返す ---
+    SGVAR[0] -> COUNTER
+    "length   : ", RESULT -> STDOUT                    // 18
+
+    // --- FORMATTER（%s %d %x %c %%） ---
+    "fmt      : My name is %s, %d years old (%x, %c)", "jiro", 25, 255, 65 -> FORMATTER
+    SRESULT -> STDOUT                                  // ... (ff, A)
+END
+
+// 周期実行：文字列分岐は EQUALS 経由（== は int 専用のまま, §3）
+ON 1000
+    "ON" -> SVAR[0]                                    // 設定値（実機ではUARTやスロットから）
+    "ON", SVAR[0] -> EQUALS                            // 一致=1 を RESULT へ
+    (RESULT) -> IFYES
+        "[", NOW, "] switch is ON" -> STDOUT
+    ELSE
+        "[", NOW, "] switch is OFF" -> STDOUT
+    END
+END

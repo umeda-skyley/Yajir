@@ -1,0 +1,22 @@
+// button.txt - ボタン押下検出（押すたびにLED1をトグル＋メッセージ）
+// BTN  = Nucleo-L476RG の B1(PC13)。押下でEXTI→ON BTN が走る。
+//        PC版では TAB キー（または3秒ごとの自動発火）が BTN になる。
+// GVAR[0] に点灯状態を保持して、押すたびに ON/OFF を入れ替える。
+
+INIT
+    0 -> LED1
+    0 -> GVAR[0]
+    "ready. press the button (B1)." -> STDOUT
+END
+
+ON BTN
+    (GVAR[0] == 0) -> IFYES
+        1 -> LED1
+        1 -> GVAR[0]
+        "LED ON" -> STDOUT
+    ELSE
+        0 -> LED1
+        0 -> GVAR[0]
+        "LED OFF" -> STDOUT
+    END
+END

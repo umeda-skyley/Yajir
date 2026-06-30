@@ -1,0 +1,14 @@
+# build artifacts
+/build/
+*.o
+*.obj
+*.exe
+*.elf
+*.map
+*.list
+*.pdb
+*.ilk
+
+# editor / OS
+Thumbs.db
+.DS_Store

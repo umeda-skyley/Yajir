@@ -1,0 +1,21 @@
+// 状態: GVAR[0]=ダブルタップ判定窓(0/1), GVAR[1]=直近で受理したエッジ時刻
+ON BTN
+    NOW - GVAR[1] -> VAR[0]            // 前回受理からの経過ms（VARは1ハンドラ内の作業用でOK）
+    (VAR[0] >= 30) -> IFYES            // 30ms未満はチャタリングとみなし黙って捨てる
+        NOW -> GVAR[1]
+        (GVAR[0] == 0) -> IFYES
+            1 -> GVAR[0]               // 1タップ目: 300msの判定窓を開く
+            300 -> TIMER
+        ELSE
+            0 -> GVAR[0]               // 窓の中で2タップ目 = ダブルタップ確定
+            "DOUBLE TAP" -> STDOUT     //   窓を閉じる（居残るTIMERは下でGVAR[0]==0を見て不発）
+        END
+    END
+END
+
+ON TIMER
+    (GVAR[0] == 1) -> IFYES            // 窓が開いたまま満期 = 2タップ目が来なかった
+        0 -> GVAR[0]
+        "SINGLE TAP" -> STDOUT
+    END
+END

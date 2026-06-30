@@ -1,0 +1,11 @@
+// blink.txt - Lチカ（500ms点滅）
+// LED1 = Nucleo-L476RG の LD2(PA5)。PC版でもコンソールに [GPIO] LED1 -> 0/1 が出る。
+//
+// MAIN は協調ループの本体。WAIT で待つ間に他のイベント(ON BTN 等)も処理される。
+
+MAIN
+    1 -> LED1
+    500 -> WAIT
+    0 -> LED1
+    500 -> WAIT
+END
