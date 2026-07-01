@@ -54,7 +54,7 @@
 #endif
 
 /* コンパイル後のサイズ */
-#define CFG_CODE_SIZE       4096  /* バイトコードバッファ（バイト） */
+#define CFG_CODE_SIZE       2048  /* バイトコードバッファ（バイト）。PERサンプルで約400B使用＝2KBで十分 */
 #define CFG_STRPOOL_SIZE    1024  /* 文字列定数プール（バイト） */
 
 /* 識別子 */
