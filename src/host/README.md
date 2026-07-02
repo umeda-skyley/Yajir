@@ -31,6 +31,7 @@ src/host/
 
 - **PC**: リポジトリ直下の `build.bat`（`build.bat main` で `build\script.exe`）。
   使用ソースは `CORE` + `PCHOST`（= `common/host_diag.c` + `pc/host_mock.c` + `pc/main.c`）。
+  実行はコマンドプロンプトから `build\script.exe run scripts\blink.yaj`（第2引数に秒数を渡すと自動停止）。
 - **STM32**: CubeIDE プロジェクトに `core/` `common/` `stm32_l476/` を追加。
   詳細は [`stm32_l476/README.md`](stm32_l476/README.md)。
 
