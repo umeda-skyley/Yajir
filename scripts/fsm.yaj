@@ -1,0 +1,39 @@
+// fsm.yaj - 名前ディスパッチ・ステートマシン（信号機）
+//
+// Yajir らしいFSMの書き方。`(GVAR==1)->IFYES` の if 梯子ではなく、
+// 状態を「名前付きハンドラ」にして、名前で呼び分ける（＝ジャンプテーブル）。
+//
+//   ・状態      = def_handler + ON …            （ON S_RED が「RED状態の処理」そのもの）
+//   ・現在状態  = SGVAR[0] に状態名の文字列を持つ
+//   ・1歩進める = SGVAR[0] -> INVOKER            （現在状態のハンドラを次tickで起動）
+//   ・遷移      = "次状態名" -> SGVAR[0]          （次に何になるか書くだけ）
+//
+// 状態を足すのは def_handler(S_X) と ON S_X の追加だけ。ディスパッチャ(ON 500)は不変。
+// INVOKER は非再帰（次tick発火）なので暴走せず、1tickに1歩。ここでは ON 500 をクロックに使う。
+
+def_handler(S_RED)
+def_handler(S_GREEN)
+def_handler(S_YELLOW)
+
+INIT
+    "S_RED" -> SGVAR[0]        // 初期状態
+END
+
+ON 500                        // クロック（ディスパッチャ）: 現在状態を1歩進める
+    SGVAR[0] -> INVOKER
+END
+
+ON S_RED
+    "RED"      -> STDOUT
+    "S_GREEN"  -> SGVAR[0]     // 遷移
+END
+
+ON S_GREEN
+    "GREEN"    -> STDOUT
+    "S_YELLOW" -> SGVAR[0]
+END
+
+ON S_YELLOW
+    "YELLOW"   -> STDOUT
+    "S_RED"    -> SGVAR[0]
+END

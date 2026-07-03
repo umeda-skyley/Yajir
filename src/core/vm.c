@@ -97,6 +97,11 @@ const char *vm_resolve_str(value_t v)
     return "";
 }
 
+/* 文字列Utility共有の作業スクラッチ（arena内・容量 CFG_SSTR_LEN, §3）。
+ * Utilityは排他・ワンパス（再入なし）なので1本を使い回してよい。入力引数はプール定数か
+ * 文字列スロットで、このスクラッチをエイリアスすることは無い＝独立バッファとして安全。 */
+char *vm_strtmp(void) { return g_vm ? g_vm->strtmp : NULL; }
+
 void vm_store_sstr(int kind, int idx, const char *src)
 {
     char *dst = sslot_buf(kind, idx);

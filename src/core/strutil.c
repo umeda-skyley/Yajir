@@ -7,7 +7,10 @@
 #include "script.h"
 #include "vm.h"
 
-#define STMP 256   /* 生成途中の作業バッファ。SRESULTへ書く際に最終切詰される */
+/* 作業バッファ長＝最終出力先 SRESULT と同じ CFG_SSTR_LEN。実体は vm_strtmp()（arena内の共有
+ * スクラッチ）で、関数スタックには置かない。よって CFG_SSTR_LEN を大きくしても増えるのは arena
+ * 側だけ＝スタックは定数のまま（「ヒープ0・スタック少量」を厳守）。Utilityは排他・ワンパスゆえ共有安全。 */
+#define STMP CFG_SSTR_LEN
 
 /* buf に s を追記。あふれたら ERR_STR_TRUNC（§12） */
 static void sb_append(char *buf, int cap, int *len, const char *s)
@@ -32,7 +35,7 @@ static void th_slicer(int argc, const script_value_t *a)
     int len   = (argc > 2) ? a[2].i : 0;
     int slen  = (int)strlen(s);
     int i0, avail, take, len_out = 0;
-    char tmp[STMP];
+    char *tmp = vm_strtmp();
 
     i0 = start - 1;                 /* 1始まり → 0始まり */
     if (i0 < 0) i0 = 0;
@@ -49,7 +52,7 @@ static void th_slicer(int argc, const script_value_t *a)
 static void th_merger(int argc, const script_value_t *a)
 {
     int len_out = 0;
-    char tmp[STMP];
+    char *tmp = vm_strtmp();
     tmp[0] = '\0';
     if (argc > 0) sb_append(tmp, STMP, &len_out, script_resolve_str(a[0]));
     if (argc > 1) sb_append(tmp, STMP, &len_out, script_resolve_str(a[1]));
@@ -105,7 +108,7 @@ static void th_field(int argc, const script_value_t *a)
     const char *delim;
     const char *p;
     int n, cur = 0, in_tok = 0, len_out = 0;
-    char tmp[STMP];
+    char *tmp = vm_strtmp();
 
     if (argc == 2) { delim = " \t"; n = a[1].i; }          /* 略記: 既定=空白区切り */
     else { delim = (argc > 1) ? script_resolve_str(a[1]) : " ";
@@ -131,7 +134,7 @@ static void map_case(int argc, const script_value_t *a, int up)
 {
     const char *s = (argc > 0) ? script_resolve_str(a[0]) : "";
     int len_out = 0;
-    char tmp[STMP];
+    char *tmp = vm_strtmp();
     tmp[0] = '\0';
     for (; *s; s++) {
         int c = (unsigned char)*s;
@@ -149,7 +152,7 @@ static void th_trimmer(int argc, const script_value_t *a)
     const char *s = (argc > 0) ? script_resolve_str(a[0]) : "";
     const char *e;
     int len_out = 0;
-    char tmp[STMP];
+    char *tmp = vm_strtmp();
     tmp[0] = '\0';
     while (*s && isspace((unsigned char)*s)) s++;                /* 先頭側 */
     e = s + strlen(s);
@@ -167,9 +170,8 @@ static void th_formatter(int argc, const script_value_t *a)
     const char *f = (argc > 0) ? script_resolve_str(a[0]) : "";
     int ai = 1;                      /* 次に消費する引数 */
     int len_out = 0;
-    char tmp[STMP];
-    char spec[24];                   /* 1変換指定（'%' …フラグ/幅/精度… 変換文字） */
-    char piece[STMP];                /* snprintf 出力 */
+    char *tmp = vm_strtmp();         /* 作業バッファ＝arena共有スクラッチ（スタックに置かない） */
+    char spec[24];                   /* 1変換指定（'%' …フラグ/幅/精度… 変換文字）＝定数サイズ・スタック可 */
     tmp[0] = '\0';
 
     while (*f) {
@@ -187,18 +189,27 @@ static void th_formatter(int argc, const script_value_t *a)
 
             if (conv == '%') { sb_appendc(tmp, STMP, &len_out, '%'); continue; }
 
-            piece[0] = '\0';
-            switch (conv) {
-                case 'd': case 'i': case 'u': case 'o': case 'x': case 'X': case 'c':
-                    snprintf(piece, sizeof(piece), spec, (int)((ai < argc) ? a[ai].i : 0));
-                    ai++; break;
-                case 's':
-                    snprintf(piece, sizeof(piece), spec, (ai < argc) ? script_resolve_str(a[ai]) : "");
-                    ai++; break;
-                default:   /* %f/%n 等：書式実行せず spec をそのまま出す（%n 無害化, §3） */
-                    sb_append(tmp, STMP, &len_out, spec); continue;
+            /* 変換1個を作業バッファへ**直接** snprintf（中間 piece[] を廃止＝スタック半減）。
+             * 出力は残り容量 rem で頭打ち。snprintf は size 引数を守って切詰＋常にNUL終端する。
+             * 型は変換文字で選ぶ（int系/str）＝可変引数の型不一致UBを避ける安全な要。 */
+            {
+                int rem = STMP - len_out;        /* 残り容量（NUL込み） */
+                int w;
+                if (rem <= 1) { vm_set_err(ERR_STR_TRUNC); break; }
+                switch (conv) {
+                    case 'd': case 'i': case 'u': case 'o': case 'x': case 'X': case 'c':
+                        w = snprintf(tmp + len_out, (size_t)rem, spec, (int)((ai < argc) ? a[ai].i : 0));
+                        ai++; break;
+                    case 's':
+                        w = snprintf(tmp + len_out, (size_t)rem, spec, (ai < argc) ? script_resolve_str(a[ai]) : "");
+                        ai++; break;
+                    default:   /* %f/%n 等：書式実行せず spec をそのまま出す（%n 無害化, §3） */
+                        sb_append(tmp, STMP, &len_out, spec); continue;
+                }
+                if      (w < 0)      tmp[len_out] = '\0';                               /* エンコード失敗: 追記せず */
+                else if (w >= rem) { len_out += rem - 1; vm_set_err(ERR_STR_TRUNC); break; }  /* 収まらず切詰→打ち切り */
+                else                len_out += w;
             }
-            sb_append(tmp, STMP, &len_out, piece);
         }
     }
     script_set_sresult(tmp);

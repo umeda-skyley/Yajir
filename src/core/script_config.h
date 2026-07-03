@@ -69,4 +69,28 @@
 #define CFG_LINE_DELIM_STRICT 0
 #endif
 
+/* イベントキュー enqueue のクリティカルセクション（ISR直post・MPSC安全, §10/§11 v0.4.1）。
+ *
+ * 生ISRから script_post_msg* を直接呼べるように、enqueue（evq_push の tail 公開）だけを
+ * 短いクリティカルセクションで囲う。割り込み禁止/復帰の作法はターゲット依存なので、
+ * コアは下の2マクロ越しに囲むだけ＝コア自体はホスト非依存（純C）を保つ。
+ *
+ *   - 既定は空（何もしない）。生産者が実質1つのホスト（PCモック等）はこのままでコスト0。
+ *   - 実機（複数生産者＝ISR＋self-post）では、ホストが自ターゲット向けに再定義する。
+ *     差し込み方は2通り: (a) ビルド時に -DYJ_PORT_HEADER="\"your_port.h\"" で自前ヘッダを取り込む、
+ *     (b) ビルド前に YJ_ENTER_CRITICAL / YJ_EXIT_CRITICAL を直接 #define しておく。
+ *   例（Cortex-M / CMSIS・PRIMASK退避で再入安全）:
+ *     #define YJ_ENTER_CRITICAL()  uint32_t _yj_pm = __get_PRIMASK(); __disable_irq()
+ *     #define YJ_EXIT_CRITICAL()   __set_PRIMASK(_yj_pm)
+ *   ※ENTER が保存変数を宣言し EXIT がそれを使う形なので、両者は同一ブロック内で対で使うこと。 */
+#ifdef YJ_PORT_HEADER
+#include YJ_PORT_HEADER
+#endif
+#ifndef YJ_ENTER_CRITICAL
+#define YJ_ENTER_CRITICAL()   ((void)0)
+#endif
+#ifndef YJ_EXIT_CRITICAL
+#define YJ_EXIT_CRITICAL()    ((void)0)
+#endif
+
 #endif /* SCRIPT_CONFIG_H */

@@ -7,8 +7,10 @@
  *   3. 周期 ON（時間源）を満期分実行（§6）
  *   4. MAIN を1スライス進める（WAITでyield/再開, §7）
  *
- * イベントキューは固定長SPSCリング。生産側(sched_post/enqueue)はISRから呼べる
- * 想定で「積んで即return」。溢れは新着ドロップ＋オーバーフローフラグ（§10）。
+ * イベントキューは固定長リング。生産側(sched_post/enqueue)は生ISRから直接呼べる
+ * （複数生産者＝ISR＋スクリプトのself-post）想定で「積んで即return」。溢れは新着
+ * ドロップ＋オーバーフローフラグ（§10）。MPSC安全化のため enqueue のみクリティカル
+ * セクション（YJ_ENTER/EXIT_CRITICAL・既定空／ホスト再定義, §11 v0.4.1）で保護する。
  *
  * ホスト非依存（純C）コア層。
  */
@@ -18,19 +20,28 @@
 
 /* ---- イベントキュー（リングバッファ） ---- */
 
-/* 生産側：1件積む。ISR安全に保つべきはこの操作のみ（§10）。
- * 実機ではここを短いクリティカルセクションで囲む。0=ok / <0=満杯 */
+/* 生産側：1件積む。生ISRから直接呼べる（ISR＋self-postの複数生産者・単一消費者）。
+ * スロット確保→ペイロード書込→tail公開 の全体をクリティカルセクションで囲い、
+ * 生産者間の evq_tail 競合を防ぐ（消費側=sched_tick は保護不要・single-consumer）。
+ * 既定の YJ_*_CRITICAL は空マクロ＝単一生産者ホストではコスト0（§11 v0.4.1）。0=ok / <0=満杯 */
 static int evq_push(const event_t *ev)
 {
     script_vm_t *m = vm();
-    int next = (m->evq_tail + 1) % CFG_EVENT_QUEUE_LEN;
-    if (next == m->evq_head) {        /* 満杯：新着ドロップ＋フラグ（§10） */
-        m->evq_overflow = true;
-        return -1;
+    int rc;
+    YJ_ENTER_CRITICAL();
+    {
+        int next = (m->evq_tail + 1) % CFG_EVENT_QUEUE_LEN;
+        if (next == m->evq_head) {        /* 満杯：新着ドロップ＋フラグ（§10） */
+            m->evq_overflow = true;
+            rc = -1;
+        } else {
+            m->evq[m->evq_tail] = *ev;
+            m->evq_tail = next;           /* 最後に公開 */
+            rc = 0;
+        }
     }
-    m->evq[m->evq_tail] = *ev;
-    m->evq_tail = next;               /* 最後に公開（SPSC） */
-    return 0;
+    YJ_EXIT_CRITICAL();
+    return rc;
 }
 
 /* 消費はディスパッチ側（sched_tick の drain）でインラインに行う（境界スナップショット）。 */

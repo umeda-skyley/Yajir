@@ -18,7 +18,6 @@ static char g_arena[sizeof(script_vm_t) + 128];
 static char  g_src[SCRIPT_MAX];
 static int   g_len;        /* 受信済みバイト数 */
 static int   g_running;    /* 0=受信中 / 1=実行中 */
-static volatile int g_btn_pending;  /* ISR→ループへ橋渡し（ボタン押下フラグ） */
 
 /* ---- 小物：10進プリント ---- */
 static void put_dec(int32_t v)
@@ -39,7 +38,6 @@ void yajir_loader_init(void)
 {
     g_len = 0;
     g_running = 0;
-    g_btn_pending = 0;
     memset(g_src, 0, sizeof(g_src));
     banner();
 }
@@ -102,16 +100,14 @@ void yajir_feed_byte(uint8_t b)
 
 void yajir_post_button(void)
 {
-    g_btn_pending = 1;   /* ISR内ではフラグだけ立て、post はループ側で（軽いISRに） */
+    /* ボタンEXTI ISR から直接post（MPSC安全, §10/§11 v0.4.1）。
+     * enqueue はコアが YJ_*_CRITICAL で保護するので、生ISRで叩いてよい
+     * （yajir_port_stm32.h を YJ_PORT_HEADER で有効化しておくこと）。次tickで ON BTN。 */
+    script_post_msg("BTN", 1);
 }
 
 void yajir_loop(void)
 {
     if (!g_running) return;
-
-    if (g_btn_pending) {
-        g_btn_pending = 0;
-        script_post_msg("BTN", 0);   /* 次tickで ON BTN が走る */
-    }
     script_tick();   /* タイマ満期＋キュー＋周期＋MAIN を1ステップ（§1） */
 }

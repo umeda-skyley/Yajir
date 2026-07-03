@@ -24,7 +24,7 @@
 
 /* Yajir 言語/実装バージョン。スクリプトからは入力ポート VERSION（str産出）で、
  * ホストからは script_version() で読める（§11, v0.4）。 */
-#define SCRIPT_VERSION "0.4.0"
+#define SCRIPT_VERSION "0.4.1"
 
 /* 出力ポートが受け取る値（型タグ付き）。SV_CHARは文字、SV_INTは数値、SV_STRは
  * script_str()で文字列に解決して出力する。 */
@@ -104,6 +104,7 @@ typedef enum {
     ERR_BAD_SLOT_INDEX,  /* 添字が定数でない/範囲外（§4, §12） */
     ERR_NEST_TOO_DEEP,   /* ネスト上限超過（§12） */
     ERR_BAD_POSITION,    /* ポート向き違反: in を右辺 / out を左辺 / 産出noneを中間（§3, v0.3.8） */
+    ERR_TOO_MANY_PORTS,  /* スクリプト def_handler でポート表が満杯（§3, v0.4.1） */
     ERR_SYNTAX           /* 上記に当てはまらない構文崩れ（受け皿） */
 } script_err_t;
 

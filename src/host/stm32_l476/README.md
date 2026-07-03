@@ -45,6 +45,19 @@ src/host/stm32_l476/*.c … yajir_glue.c / yajir_loader.c（このボード固�
 インクルードパス（CubeIDE の Project > Properties > C/C++ Build > Settings > Include paths）に
 `src/core` `src/host/common` `src/host/stm32_l476` を追加します。
 
+### ISR直post（MPSC安全）を有効化する ― 推奨
+
+このホストは UART RX 割り込みやボタンEXTIから `script_post_msg*` を**直接**呼びます。コアの
+イベントキューを複数生産者に対して安全にするため、enqueue のクリティカルセクションを有効化します:
+
+- **Defined symbols**（Settings > MCU GCC Compiler > Preprocessor）に次を追加:
+  ```
+  YJ_PORT_HEADER="yajir_port_stm32.h"
+  ```
+  これで `script_config.h` が [`yajir_port_stm32.h`](yajir_port_stm32.h) を取り込み、`YJ_ENTER/EXIT_CRITICAL`
+  が CMSIS の `PRIMASK` 退避に割り当たります（割り込み禁止区間は tail 更新の数命令のみ）。
+- 未設定だとマクロは空（コア既定）＝ISR直postが非保護のままになるので、実機では**設定推奨**。
+
 > `script_config.h` の `CFG_MAX_PORTS` は 48 以上であること（組込み21＋ホスト分）。
 > 既定で 48 になっています。超過すると register が**黙って失敗**する点に注意。
 
@@ -90,10 +103,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     }
 }
 
-/* ボタンEXTI：押下を BTN イベントへ（次tickで ON BTN） */
+/* ボタンEXTI：押下を BTN イベントへ（ISRから直接post＝MPSC安全, v0.4.1。次tickで ON BTN） */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin == GPIO_PIN_13) {
+    if (GPIO_Pin == B1_Pin) {   /* CubeMX生成マクロ（= GPIO_PIN_13） */
         yajir_post_button();
     }
 }

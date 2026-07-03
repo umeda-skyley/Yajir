@@ -55,7 +55,7 @@ static int is_reserved_name(const char *n)
     static const char *const kw[] = {
         "RESULT","SRESULT","GVAR","VAR","ARG","SGVAR","SVAR","SARG",
         "none","IFYES","WAIT","TIMER","CLEAR_ERR","NOT","AND","OR",
-        "INIT","MAIN","ON","END","ELSE", 0
+        "INIT","MAIN","ON","END","ELSE","EXIT", 0
     };
     int i;
     for (i = 0; kw[i]; i++) if (strcmp(n, kw[i]) == 0) return 1;
@@ -428,10 +428,22 @@ static void parse_if(int argc, int line)
 static void parse_stmt(void)
 {
     int line = P.cur.line;
-    int argc = parse_expr_list();
     char tname[CFG_MAX_NAME];
-    int pi;
+    int argc, pi;
 
+    /* EXIT: ON ハンドラを即終了（早期リターン, v0.4.2）。END/ELSE と同じ裸の制御語。
+     * 実装は「その場で OP_HALT を吐く」だけ＝VMの EXEC_DONE でハンドラが即完了する。
+     * IFYES の内側からでもハンドラ全体を抜ける（C の return 相当）。INIT/MAIN では構文エラー
+     * （yield_ok が立つ＝MAIN/INIT。WAIT の "ON専用" 判定のちょうど逆）。 */
+    if (is_kw("EXIT")) {
+        if (P.yield_ok) fail(line, ERR_SYNTAX);
+        adv();
+        emit8(OP_HALT);
+        expect_newline();
+        return;
+    }
+
+    argc = parse_expr_list();
     expect(T_ARROW, "'->'");
     if (P.cur.type != T_IDENT) fail(P.cur.line, ERR_SYNTAX);   /* -> の後に送り先が無い */
     strcpy(tname, P.cur.text);
@@ -642,10 +654,42 @@ static void parse_def_alias(void)
     expect_newline();
 }
 
+/* def_handler(NAME) を解析してハンドラ源ポートを登録（v0.4.1）。
+ * handler は束縛すべきCの実体（関数/値）を持たない＝名前だけのイベントチャネルなので、
+ * def_alias に続きコンパイラが実際に解釈する2つ目の def_。意味は「存在を保証する（冪等）」:
+ * C側が同名を登録済みなら no-op、無ければ新規に生やす。以後 ON NAME / 値 -> NAME が解決する。 */
+static void parse_def_handler(void)
+{
+    char name[CFG_MAX_NAME];
+    int line = P.cur.line, pi;
+    adv();                                  /* "def_handler" を消費 */
+    expect(T_LPAREN, "'('");
+    if (P.cur.type != T_IDENT) fail(P.cur.line, ERR_SYNTAX);
+    strncpy(name, P.cur.text, CFG_MAX_NAME - 1); name[CFG_MAX_NAME - 1] = '\0';
+    adv();
+    expect(T_RPAREN, "')'");
+    expect_newline();
+
+    /* 衝突: 予約語・スロット名・制御語／別名と同名は不可 */
+    if (is_reserved_name(name) || alias_find(name)) fail_tok(line, ERR_SYNTAX, name);
+    pi = vm_find_port(name);
+    if (pi >= 0) {
+        if (vm()->ports[pi].kind == PK_HANDLER) return;   /* 既にハンドラ源＝冪等 no-op */
+        fail_tok(line, ERR_SYNTAX, name);                 /* 既登録の非handlerポート/定数と衝突 */
+    }
+    /* 新規登録。ポート表満杯なら add_port は登録せず（黙ってNULL）→ 見つからないので検出 */
+    script_register_handler(name);
+    if (vm_find_port(name) < 0) fail_tok(line, ERR_TOO_MANY_PORTS, name);
+}
+
 /* プログラム状態をロード前にリセット（§4：GVAR/VAR 0クリア） */
 static void reset_program(void)
 {
     script_vm_t *m = vm();
+    /* 注: スクリプト def_handler で増えたポートは reset_program では消さない。ポート表の寿命は
+     * script_init（§3 v0.4.1）。現行ホスト（PC/STM32ローダ）は各ロードで再initするので前ロードの
+     * 宣言は残らない。※単一initで複数スクリプトを compile する場合は def_handler ポートが積み増さ
+     * れる（冪等なので同名再宣言は no-op・CFG_MAX_PORTS の予算内で運用すること）。 */
     m->code_len = 0;
     m->strpool_len = 0;
     m->nblocks = 0;
@@ -698,8 +742,9 @@ int compiler_compile(const char *src, size_t len)
         if (P.cur.type == T_EOF) break;
         if (P.cur.type != T_IDENT) top_level_unexpected();
 
-        if (is_kw("def_alias")) { parse_def_alias(); continue; }   /* コンパイラが解釈する唯一の def_（v0.3.8） */
-        if (!strncmp(P.cur.text, "def_", 4)) { skip_def_line(); continue; }
+        if (is_kw("def_alias"))   { parse_def_alias();   continue; }   /* コンパイラが解釈する def_（v0.3.8） */
+        if (is_kw("def_handler")) { parse_def_handler(); continue; }   /* 同上・ハンドラ源宣言（v0.4.1） */
+        if (!strncmp(P.cur.text, "def_", 4)) { skip_def_line(); continue; }  /* 他の def_ は非解釈（写し） */
         if (is_kw("INIT")) { P.open_line = P.cur.line; adv(); parse_simple_block(BLK_INIT); }
         else if (is_kw("MAIN")) { P.open_line = P.cur.line; adv(); parse_simple_block(BLK_MAIN); }
         else if (is_kw("ON")) { P.open_line = P.cur.line; adv(); parse_on_block(); }

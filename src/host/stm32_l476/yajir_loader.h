@@ -13,9 +13,10 @@
  *   yajir_loader_init();
  *   HAL_UART_Receive_IT(&huart2, &rx, 1);     // 1バイト受信を起動
  *   while (1) { yajir_loop(); }
- *   // 割り込みコールバックから:
+ *   // 割り込みコールバックから（ISRから直接post可＝MPSC安全, §10/§11 v0.4.1。
+ *   //  yajir_port_stm32.h を YJ_PORT_HEADER で有効化しておくこと）:
  *   void HAL_UART_RxCpltCallback(UART_HandleTypeDef *h){ yajir_feed_byte(rx); HAL_UART_Receive_IT(h,&rx,1); }
- *   void HAL_GPIO_EXTI_Callback(uint16_t pin){ if(pin==GPIO_PIN_13) yajir_post_button(); }
+ *   void HAL_GPIO_EXTI_Callback(uint16_t pin){ if(pin==B1_Pin) yajir_post_button(); }
  */
 #ifndef YAJIR_LOADER_H
 #define YAJIR_LOADER_H
@@ -30,7 +31,7 @@ void yajir_loader_init(void);
  *   - 実行後: その1バイトを UART1 イベントとして post（ON UART1 で受けられる）。 */
 void yajir_feed_byte(uint8_t b);
 
-/* ボタンEXTI から呼ぶ（ISR文脈）。次tickで ON BTN を発火。 */
+/* ボタンEXTI から呼ぶ（ISR文脈）。ISRから直接 script_post_msg（MPSC安全）。次tickで ON BTN。 */
 void yajir_post_button(void);
 
 /* メインループ本体。実行中なら script_tick() を1回回す。while(1)から毎周回呼ぶ。 */

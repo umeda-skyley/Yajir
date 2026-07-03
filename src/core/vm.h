@@ -101,6 +101,9 @@ typedef struct {
     char    sgvar[CFG_SGVAR_COUNT][CFG_SSTR_LEN];
     char    svar[CFG_SVAR_COUNT][CFG_SSTR_LEN];
     char    sresult[CFG_SSTR_LEN];
+    /* 文字列Utility共有の作業スクラッチ（§3）。Utilityは排他・ワンパス（再入なし）ゆえ1本で足りる。
+     * ここに置くことで関数スタックが CFG_SSTR_LEN に比例して膨らむのを防ぐ（大きくなるのは arena 側）。 */
+    char    strtmp[CFG_SSTR_LEN];
 
     /* 異常フラグ集合（§12 STATUS）。ERR_xxx ビットの論理和。 */
     int32_t status;
@@ -176,5 +179,8 @@ const char *vm_resolve_str(value_t v);
 /* 文字列スロットへコピー（切り詰め＋ERR_STR_TRUNC、自己コピー安全）。
  * kind=SSLOT_SVAR/SGVAR/SRESULT, idx は SRESULT時0。 */
 void vm_store_sstr(int kind, int idx, const char *src);
+
+/* 文字列Utility用の共有作業スクラッチ（arena内・容量 CFG_SSTR_LEN）。§3。 */
+char *vm_strtmp(void);
 
 #endif /* VM_H */

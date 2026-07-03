@@ -223,6 +223,72 @@ int main(void)
         CHECK(g_n==2 && g_ival[0]==11 && strcmp(g_sval[1],"P3")==0, "(int,int,int,str): SARG[3]==\"P3\"");
     }
 
+    /* 11) def_handler: スクリプト側でハンドラ源を宣言し self-post + ON で回す（C登録不要, v0.4.1） */
+    {
+        const char *src =
+            "def_handler(WORK)\n"                 /* スクリプトが自分でハンドラ源を宣言 */
+            "ON RX\n"
+            "    7, \"hi\" -> WORK\n"             /* script-declared handler へ self-post */
+            "END\n"
+            "ON WORK\n"
+            "    ARG[0]  -> OUT\n"                /* 7 */
+            "    SARG[1] -> OUT\n"                /* "hi" */
+            "END\n";
+        CHECK(compile(src)==0, "def_handler(WORK) script compiles (script-side handler)");
+        g_n=0; tick_at(0);
+        script_post_msg("RX", 0);
+        tick_at(1);                               /* RX→WORK post（次tickへ） */
+        tick_at(2);                               /* WORK 発火 */
+        CHECK(g_n==2 && g_ival[0]==7 && g_isstr[1] && strcmp(g_sval[1],"hi")==0,
+              "def_handler(WORK): self-post + ON WORK forwarded (7,\"hi\")");
+    }
+
+    /* 12) C からも名前で post できる（def_handler で表に載ったので vm_find_port が引ける） */
+    {
+        const char *src = "def_handler(CDRIVEN)\nON CDRIVEN\n    ARG[0] -> OUT\nEND\n";
+        CHECK(compile(src)==0, "def_handler(CDRIVEN) compiles");
+        g_n=0; tick_at(0);
+        script_post_msg("CDRIVEN", 42); tick_at(1);
+        CHECK(g_n==1 && g_ival[0]==42, "C can post to a script-declared handler by name");
+    }
+
+    /* 13) def_handler は冪等: C登録済み同名は no-op（後方互換） */
+    {
+        CHECK(compile("def_handler(MYHANDLER)\nON MYHANDLER\n    ARG[0] -> OUT\nEND\n")==0,
+              "def_handler(MYHANDLER) idempotent with C-registered handler");
+    }
+
+    /* 14) def_handler の衝突/予約検査（登録は行われず OUT 等はクロバーされない） */
+    {
+        CHECK(compile("def_handler(GVAR)\n")!=0, "def_handler(GVAR) rejected (reserved slot name)");
+        CHECK(compile("def_handler(OUT)\n")!=0,  "def_handler(OUT) rejected (collides with out port)");
+        /* OUT が壊れていないことを確認: 直後に OUT を使う普通のスクリプトが通る */
+        CHECK(compile("ON RX\n    ARG[0] -> OUT\nEND\n")==0, "OUT still usable after rejected def_handler(OUT)");
+    }
+
+    /* 15) EXIT: ON ハンドラの途中終了（条件付き早期リターン, v0.4.2） */
+    {
+        const char *src =
+            "ON RX\n"
+            "    1 -> OUT\n"                      /* 常に出る */
+            "    (ARG[0] == 9) -> IFYES\n"
+            "        EXIT\n"                      /* 条件成立でハンドラ即終了（IFYES内から抜ける） */
+            "    END\n"
+            "    2 -> OUT\n"                      /* EXITしたら来ない */
+            "END\n";
+        CHECK(compile(src)==0, "EXIT in ON compiles");
+        g_n=0; tick_at(0); script_post_msg("RX", 9); tick_at(1);
+        CHECK(g_n==1 && g_ival[0]==1, "EXIT: early return skips rest of handler (only 1 out)");
+        g_n=0; script_post_msg("RX", 0); tick_at(2);
+        CHECK(g_n==2 && g_ival[0]==1 && g_ival[1]==2, "no EXIT (cond false): both outputs run");
+    }
+
+    /* 16) EXIT は INIT/MAIN では構文エラー（ON 専用） */
+    {
+        CHECK(compile("INIT\n    EXIT\nEND\n")!=0, "EXIT in INIT rejected (ERR_SYNTAX)");
+        CHECK(compile("MAIN\n    EXIT\nEND\n")!=0, "EXIT in MAIN rejected (ERR_SYNTAX)");
+    }
+
     printf("\n%s (failures=%d)\n", g_fail ? "PHASE8 FAILED" : "PHASE8 PASSED", g_fail);
     return g_fail ? 1 : 0;
 }
