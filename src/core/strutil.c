@@ -97,6 +97,18 @@ static void th_strtol(int argc, const script_value_t *a)
     script_set_result((int32_t)strtol(script_resolve_str(a[0]), NULL, base));
 }
 
+/* CHR: int -> SRESULT。整数（下位1バイト）を1文字の文字列にする（§3, v0.4.2）。
+ * CHAR タグ撤去（§9）に伴い「数を文字グリフとして出す」を出力側ポートに持たせる糖衣＝
+ * STRTOL（str→int）の対。受信バイトのエコーは `ARG[0] -> CHR -> STDOUT`。
+ * 非表示コードもそのまま1バイト文字列にする（値0=NUL は空文字列扱い）。 */
+static void th_chr(int argc, const script_value_t *a)
+{
+    char buf[2];
+    buf[0] = (char)(((argc > 0) ? a[0].i : 0) & 0xFF);
+    buf[1] = '\0';
+    script_set_sresult(buf);
+}
+
 /* FIELD: str, [delim,] N -> SRESULT。区切りでN番目(1始まり)のトークンを取り出す（§3, v0.4）。
  *   "SEND 0001 0002 OK", " ", 3 -> FIELD  → "0002"   ／  line, 3 -> FIELD  ＝ 空白区切りの略記
  * delim は「区切り文字の集合」(strtok流)＝delim中のどの文字も区切り。連続区切りは潰し、
@@ -226,6 +238,7 @@ void register_strutils(void)
     script_register_inout("EQUALS",    NULL, th_equals,    SCRIPT_T_INT);
     script_register_inout("FINDER",    NULL, th_finder,    SCRIPT_T_INT);   /* 位置検索（1始まり）, v0.3.8 */
     script_register_inout("STRTOL",    NULL, th_strtol,    SCRIPT_T_INT);   /* 文字列→整数（既定16進）, v0.4 */
+    script_register_inout("CHR",       NULL, th_chr,       SCRIPT_T_STR);   /* 整数→1文字str（グリフ化）, v0.4.2 */
     script_register_inout("FIELD",     NULL, th_field,     SCRIPT_T_STR);   /* 区切りN番目トークン, v0.4 */
     script_register_inout("UPPER",     NULL, th_upper,     SCRIPT_T_STR);   /* 大文字化, v0.4 */
     script_register_inout("LOWER",     NULL, th_lower,     SCRIPT_T_STR);   /* 小文字化, v0.4 */

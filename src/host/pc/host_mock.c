@@ -43,9 +43,8 @@ static void th_stdout(int argc, const script_value_t *a)
 {
     int i;
     for (i = 0; i < argc; i++) {
-        if (a[i].tag == SV_CHAR)          putchar((int)a[i].i);                  /* char型タグ→文字 */
-        else if (script_val_is_str(a[i])) fputs(script_resolve_str(a[i]), stdout); /* 文字列定数/スロット */
-        else                              printf("%d", (int)a[i].i);             /* int型タグ→数値 */
+        if (script_val_is_str(a[i])) fputs(script_resolve_str(a[i]), stdout);  /* 文字列定数/スロット */
+        else                         printf("%d", (int)a[i].i);                /* int→10進（グリフは CHR/FORMATTER %c で・v0.4.2） */
     }
     printf("\r\n");
     fflush(stdout);

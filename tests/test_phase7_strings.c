@@ -96,6 +96,36 @@ int main(void)
         }
     }
 
+    /* 3.5) 文字リテラル 'A'（=int 65・専用タグ無し）＋ CHR（int→1文字str）: v0.4.2 */
+    {
+        const char *src =
+            "INIT\n"
+            "    'A' -> GVAR[0]\n"            /* 文字リテラル＝int 65 */
+            "    'A' + 1 -> GVAR[1]\n"        /* int算術：66 */
+            "    '\\n' -> GVAR[2]\n"          /* エスケープ：10 */
+            "    65 -> CHR\n"                 /* int→"A" */
+            "    SRESULT -> SGVAR[0]\n"
+            "    'Z' -> CHR -> SGVAR[1]\n"    /* チェイン：'Z'(=90)→"Z" */
+            "END\n";
+        int r = compile(src);
+        CHECK(r == 0, "'A' literal + CHR compiles");
+        if (r==0){ run_init();
+            CHECK(vm()->gvar[0].i==65,        "'A' == int 65");
+            CHECK(vm()->gvar[0].tag==SV_INT,  "'A' carries INT tag (CHAR撤去)");
+            CHECK(vm()->gvar[1].i==66,        "'A' + 1 == 66 (int arith)");
+            CHECK(vm()->gvar[2].i==10,        "'\\n' == 10 (escape)");
+            CHECK(strcmp(vm()->sgvar[0], "A")==0, "65 -> CHR -> \"A\"");
+            CHECK(strcmp(vm()->sgvar[1], "Z")==0, "'Z' -> CHR -> \"Z\" (chain)");
+        }
+    }
+
+    /* 3.6) 'A' の型・字句エラー（v0.4.2） */
+    {
+        CHECK(compile("INIT\n    'A' -> SVAR[0]\nEND\n") != 0, "'A' -> SVAR = type mismatch");
+        CHECK(compile("INIT\n    '' -> GVAR[0]\nEND\n")  != 0, "empty '' = lex/syntax error");
+        CHECK(compile("INIT\n    'AB' -> GVAR[0]\nEND\n") != 0, "'AB' multi-char = lex/syntax error");
+    }
+
     /* 4) 文字列分岐（EQUALS -> RESULT -> IFYES） */
     {
         const char *src =

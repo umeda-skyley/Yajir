@@ -184,10 +184,12 @@ int script_post_msg(const char *name, int32_t value)
     extern int sched_post(const char *name, value_t v);
     return sched_post(name, val_int(value));
 }
+/* v0.4.2: CHAR タグ撤去により post_msg と同義（受信バイトは int で ARG[0] に入る）。
+ * 互換のため薄い別名として温存（新規コードは post_msg でよい・§10, §11）。 */
 int script_post_msg_char(const char *name, char ch)
 {
     extern int sched_post(const char *name, value_t v);
-    return sched_post(name, val_char((unsigned char)ch));
+    return sched_post(name, val_int((unsigned char)ch));
 }
 int script_post_msg_v(const char *name, int argc, const script_arg_t *argv)
 {

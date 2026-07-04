@@ -77,6 +77,41 @@ static int lex_string(lexer_t *lx, token_t *out, char *errbuf, size_t errbuf_sz,
     return 0;
 }
 
+/* 文字リテラル 'A' を読み、int リテラル（ASCIIコード）として T_NUMBER を吐く（§2, v0.4.2）。
+ * 文字リテラルは整数の別表記＝専用の値タグを持たない（'A' == 0x41 == 65）。エスケープは
+ * 文字列と同じ \r \n \t \\ \'。空 '' ・複数文字 'AB' は構文エラー。 */
+static int lex_char(lexer_t *lx, token_t *out, char *errbuf, size_t errbuf_sz, int *errline)
+{
+    char c;
+    lx->pos++;                                  /* 開始の ' を消費 */
+    if (at_end(lx) || peek(lx) == '\'')         /* 空 '' */
+        return lex_err(errbuf, errbuf_sz, errline, lx->line, "empty character literal");
+    c = peek(lx);
+    if (c == '\n' || c == '\r')                 /* 文字リテラルは1行内 */
+        return lex_err(errbuf, errbuf_sz, errline, lx->line, "unterminated character literal");
+    if (c == '\\') {
+        char e = peek2(lx);
+        switch (e) {
+            case 'r':  c = '\r'; break;
+            case 'n':  c = '\n'; break;
+            case 't':  c = '\t'; break;
+            case '\\': c = '\\'; break;
+            case '\'': c = '\''; break;
+            default:
+                return lex_err(errbuf, errbuf_sz, errline, lx->line, "bad escape sequence");
+        }
+        lx->pos += 2;
+    } else {
+        lx->pos++;
+    }
+    if (peek(lx) != '\'')                        /* 複数文字 'AB' / 未終端 */
+        return lex_err(errbuf, errbuf_sz, errline, lx->line, "unterminated or multi-char character literal");
+    lx->pos++;                                   /* 終端の ' を消費 */
+    out->type = T_NUMBER;
+    out->num  = (int32_t)(unsigned char)c;       /* int 値として積む（専用タグ無し） */
+    return 0;
+}
+
 int lex_next(lexer_t *lx, token_t *out, char *errbuf, size_t errbuf_sz, int *errline)
 {
     memset(out, 0, sizeof(*out));
@@ -107,7 +142,8 @@ int lex_next(lexer_t *lx, token_t *out, char *errbuf, size_t errbuf_sz, int *err
         return 0;
     }
 
-    if (c == '"') return lex_string(lx, out, errbuf, errbuf_sz, errline);
+    if (c == '"')  return lex_string(lx, out, errbuf, errbuf_sz, errline);
+    if (c == '\'') return lex_char  (lx, out, errbuf, errbuf_sz, errline);   /* 文字リテラル 'A'（§2, v0.4.2） */
 
     if (is_digit(c)) {
         /* 10進/16進(0x)/2進(0b)。'_' は桁区切りで読み飛ばし。33bit以上はエラー（§2） */

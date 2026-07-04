@@ -24,10 +24,11 @@
 
 /* Yajir 言語/実装バージョン。スクリプトからは入力ポート VERSION（str産出）で、
  * ホストからは script_version() で読める（§11, v0.4）。 */
-#define SCRIPT_VERSION "0.4.1"
+#define SCRIPT_VERSION "0.4.2"
 
-/* 出力ポートが受け取る値（型タグ付き）。SV_CHARは文字、SV_INTは数値、SV_STRは
- * script_str()で文字列に解決して出力する。 */
+/* 出力ポートが受け取る値（型タグ付き）。SV_INTは数値、SV_STRは script_str()で文字列に
+ * 解決して出力する（v0.4.2でCHARタグ撤去＝値は int/str の2択・§9。数を文字グリフで出すのは
+ * 出力側の変換 CHR / FORMATTER %c の仕事）。 */
 typedef value_t script_value_t;
 
 typedef void    (*script_out_fn)(int argc, const script_value_t *argv);
@@ -69,19 +70,19 @@ void        script_set_sresult(const char *s);
 
 /* --- 非同期源 → VMへの橋（ISRから呼べる。積んで即return, §10） --- */
 int script_post_msg     (const char *name, int32_t value); /* int値→ARG[0]      */
-int script_post_msg_char(const char *name, char    ch);    /* char型タグ→ARG[0] */
+int script_post_msg_char(const char *name, char    ch);    /* = post_msg の互換別名（受信バイトを int で ARG[0]、v0.4.2） */
 /* 戻り値: 0=ok / <0=キュー満杯（オーバーフローフラグも立つ） */
 
 /* マルチ引数 post（v0.3.5, §11）。混在・複数引数を1イベントとしてアトミックに積む。
  * str引数は post時に SARG バッファへコピー（超過は切詰＋ERR_STR_TRUNC）。
- * 位置 k は ARG[k]（int/char view）/ SARG[k]（str view）で型振り分けして読む。 */
-typedef enum { SCRIPT_ARG_T_INT = 0, SCRIPT_ARG_T_CHAR = 1, SCRIPT_ARG_T_STR = 2 } script_argtype_t;
+ * 位置 k は ARG[k]（int view）/ SARG[k]（str view）で型振り分けして読む（CHAR撤去・v0.4.2）。 */
+typedef enum { SCRIPT_ARG_T_INT = 0, SCRIPT_ARG_T_STR = 2 } script_argtype_t;  /* CHAR(=1) は撤去（v0.4.2, §9） */
 typedef struct { script_argtype_t type; int32_t i; const char *s; int len; } script_arg_t;
 #define SCRIPT_ARG_INT(v)     script_arg_make_int((int32_t)(v))
-#define SCRIPT_ARG_CHAR(c)    script_arg_make_char((char)(c))
+/* v0.4.2: CHAR 撤去により INT の別名（受信バイトは int）。互換のため名前だけ温存 */
+#define SCRIPT_ARG_CHAR(c)    script_arg_make_int((int32_t)(unsigned char)(c))
 #define SCRIPT_ARG_STR(p, l)  script_arg_make_str((p), (int)(l))   /* 明示長（§11, v0.3.8）。非終端でも可 */
 static inline script_arg_t script_arg_make_int (int32_t v)    { script_arg_t a; a.type=SCRIPT_ARG_T_INT;  a.i=v; a.s=0; a.len=0; return a; }
-static inline script_arg_t script_arg_make_char(char c)       { script_arg_t a; a.type=SCRIPT_ARG_T_CHAR; a.i=(unsigned char)c; a.s=0; a.len=0; return a; }
 static inline script_arg_t script_arg_make_str (const char *s, int len){ script_arg_t a; a.type=SCRIPT_ARG_T_STR; a.i=0; a.s=s; a.len=len; return a; }
 
 /* 引数順は §11 確定形（name, argc, argv）。str引数は len バイトを SARG へコピー（超過は切詰＋ERR_STR_TRUNC）。 */

@@ -51,9 +51,8 @@ static void th_stdout(int argc, const script_value_t *a)
 {
     int i; char num[16];
     for (i = 0; i < argc; i++) {
-        if (a[i].tag == SV_CHAR)          yajir_putc((char)a[i].i);                 /* char型タグ→文字 */
-        else if (script_val_is_str(a[i])) yajir_puts(script_resolve_str(a[i]));     /* 文字列定数/スロット */
-        else { int_to_str(a[i].i, num);   yajir_puts(num); }                        /* int型タグ→数値 */
+        if (script_val_is_str(a[i])) yajir_puts(script_resolve_str(a[i]));      /* 文字列定数/スロット */
+        else { int_to_str(a[i].i, num); yajir_puts(num); }                      /* int→10進（グリフは CHR/FORMATTER %c で・v0.4.2） */
     }
     yajir_puts("\r\n");
 }

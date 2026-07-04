@@ -37,7 +37,7 @@ int main(void)
     setup();
     printf("== Phase4 events + TIMER ==\n");
 
-    /* 1) post_msg_char → ON UART1 で ARG[0] を char タグのままエコー（§10） */
+    /* 1) post_msg_char → ON UART1：CHAR撤去(v0.4.2)で ARG[0] は int（値は 'A'=65） */
     {
         const char *src = "ON UART1\n    ARG[0] -> OUT\nEND\n";
         CHECK(script_load(src, strlen(src)) == 0, "ON UART1 loads");
@@ -45,8 +45,8 @@ int main(void)
         tick_at(0);                              /* INIT等なし */
         CHECK(script_post_msg_char("UART1", 'A') == 0, "post_msg_char queued");
         tick_at(1);
-        CHECK(g_n == 1 && g_val[0] == 'A' && g_tag[0] == SV_CHAR,
-              "ARG[0] echoed with CHAR tag");
+        CHECK(g_n == 1 && g_val[0] == 'A' && g_tag[0] == SV_INT,
+              "ARG[0] echoed as int (CHAR撤去, v0.4.2)");
     }
 
     /* 2) post_msg（int） → ARG は int タグ */

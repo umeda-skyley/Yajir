@@ -110,8 +110,7 @@ int sched_post_v(const char *name, const script_arg_t *args, int n)   /* 多値�
     ev_clear(&ev, EVT_HANDLER, pi, n);
     for (k = 0; k < ev.npos; k++) {
         switch (args[k].type) {
-            case SCRIPT_ARG_T_INT:  ev.pos[k] = val_int(args[k].i);  break;
-            case SCRIPT_ARG_T_CHAR: ev.pos[k] = val_char(args[k].i); break;
+            case SCRIPT_ARG_T_INT:  ev.pos[k] = val_int(args[k].i);  break;   /* CHAR は撤去＝INT に統合(v0.4.2) */
             case SCRIPT_ARG_T_STR:  put_str_pos(&ev, k, args[k].s ? args[k].s : "", args[k].s ? args[k].len : 0); break;
         }
     }
