@@ -7,9 +7,9 @@
 > ノート: `STDOUT` / `LED1` / `DELAY` などはホスト（C側）が用意するポートで、機器ごとに異なります。
 > 本書のサンプルで使う `STDOUT` は「ホストが用意した出力ポートの一例」として読んでください。
 
-> \\\*\\\*大文字・小文字は区別します（ケースセンシティブ）。\\\*\\\* ポート名・キーワードは大文字で正確に書いてください（`STRTOL` は有効、`strtol` は未知のポート扱い）。
+> **大文字・小文字は区別します（ケースセンシティブ）。** ポート名・キーワードは大文字で正確に書いてください（`STRTOL` は有効、`strtol` は未知のポート扱い）。
 
-\---
+---
 
 ## 結果の受け取り方（まず最初に）
 
@@ -17,23 +17,23 @@
 
 |産出するもの|結果の置き場所|受け取り方|
 |-|-|-|
-|整数（int）|`RESULT`|`RESULT -> GVAR\\\[0]`|
-|文字列（str）|`SRESULT`|`SRESULT -> SGVAR\\\[0]`|
+|整数（int）|`RESULT`|`RESULT -> GVAR[0]`|
+|文字列（str）|`SRESULT`|`SRESULT -> SGVAR[0]`|
 
 各ポートが「int産出」か「str産出」かは、以下の表の **産出** 列を見てください。
 
 ```
 "hello" -> COUNTER      # COUNTER は int産出
-RESULT  -> GVAR\\\[0]      # → 5
+RESULT  -> GVAR[0]      # → 5
 
 "abc" -> UPPER          # UPPER は str産出
-SRESULT -> SGVAR\\\[0]     # → "ABC"
+SRESULT -> SGVAR[0]     # → "ABC"
 ```
 
 複数のポートを `->` で数珠つなぎ（チェイン）にすると、途中の `RESULT`/`SRESULT` は
 自動で次の段へ渡るので、自分で書かなくても繋がります（末尾の例を参照）。
 
-\---
+---
 
 ## システム情報ポート
 
@@ -41,17 +41,17 @@ SRESULT -> SGVAR\\\[0]     # → "ABC"
 
 |ポート|産出|説明|例|
 |-|-|-|-|
-|`STATUS`|int|直近のエラー状態ビット（`ERR\\\_\\\*` の OR）|`STATUS -> GVAR\\\[0]`|
-|`CODE\\\_USED`|int|ロード中スクリプトのバイトコード使用量（バイト）|`CODE\\\_USED -> GVAR\\\[0]`|
-|`STR\\\_USED`|int|文字列定数プールの使用量（バイト）|`STR\\\_USED -> GVAR\\\[0]`|
-|`VERSION`|str|言語バージョン文字列|`VERSION -> SGVAR\\\[0]`|
+|`STATUS`|int|直近のエラー状態ビット（`ERR_*` の OR）|`STATUS -> GVAR[0]`|
+|`CODE_USED`|int|ロード中スクリプトのバイトコード使用量（バイト）|`CODE_USED -> GVAR[0]`|
+|`STR_USED`|int|文字列定数プールの使用量（バイト）|`STR_USED -> GVAR[0]`|
+|`VERSION`|str|言語バージョン文字列|`VERSION -> SGVAR[0]`|
 
 ```
 # 起動時に環境を表示する例
 "Yajir v"  -> STDOUT
 VERSION    -> STDOUT          # → 0.4.2
-"code: ", CODE\\\_USED -> STDOUT
-"str:  ", STR\\\_USED  -> STDOUT
+"code: ", CODE_USED -> STDOUT
+"str:  ", STR_USED  -> STDOUT
 ```
 
 ### エラー定数
@@ -60,17 +60,17 @@ VERSION    -> STDOUT          # → 0.4.2
 
 |定数|意味|
 |-|-|
-|`ERR\\\_QUEUE\\\_OVF`|イベントキュー溢れ|
-|`ERR\\\_TIMER\\\_FULL`|タイマ枠が一杯|
-|`ERR\\\_DIVZERO`|ゼロ除算が起きた|
-|`ERR\\\_STR\\\_TRUNC`|文字列が切り詰められた|
+|`ERR_QUEUE_OVF`|イベントキュー溢れ|
+|`ERR_TIMER_FULL`|タイマ枠が一杯|
+|`ERR_DIVZERO`|ゼロ除算が起きた|
+|`ERR_STR_TRUNC`|文字列が切り詰められた|
 
 ```
-STATUS -> GVAR\\\[0]
+STATUS -> GVAR[0]
 # 「ゼロ除算が起きていたら…」のような判定に使う（演算は言語仕様を参照）
 ```
 
-\---
+---
 
 ## 文字列ユーティリティ
 
@@ -84,12 +84,12 @@ STATUS -> GVAR\\\[0]
 |`COUNTER`|int|`str`|文字列のバイト長|
 |`EQUALS`|int|`strA, strB`|一致なら `1`、不一致なら `0`|
 |`FINDER`|int|`hay, needle`|`needle` の最初の出現位置（**1始まり**）。無ければ `0`|
-|`STRTOL`|int|`str \\\[, base]`|文字列を整数へ。**既定は16進**。第2引数で基数指定（2〜36, 0=自動）|
+|`STRTOL`|int|`str [, base]`|文字列を整数へ。**既定は16進**。第2引数で基数指定（2〜36, 0=自動）|
 |`CHR`|str|`int`|整数を1文字の文字列へ（グリフ化）。`STRTOL`（str→int）の対。受信バイトのエコー等に|
 |`SLICER`|str|`str, start, len`|部分文字列（`start` は**1始まり**）|
 |`MERGER`|str|`strA, strB`|連結|
 |`FORMATTER`|str|`fmt, args…`|`printf` 風の整形（後述）|
-|`FIELD`|str|`str \\\[, delim], N`|区切りで **N番目（1始まり）** のトークン|
+|`FIELD`|str|`str [, delim], N`|区切りで **N番目（1始まり）** のトークン|
 |`UPPER`|str|`str`|大文字化（ASCII）|
 |`LOWER`|str|`str`|小文字化（ASCII）|
 |`TRIMMER`|str|`str`|前後の空白・タブ・CR/LF を除去（中間は保持）|
@@ -100,7 +100,7 @@ STATUS -> GVAR\\\[0]
 # 長さ・一致・検索
 "hello"          -> COUNTER   # RESULT = 5
 "abc", "abc"     -> EQUALS    # RESULT = 1
-"this is a pen", "is" -> FINDER   # RESULT = 3（"th\\\[is]…"）
+"this is a pen", "is" -> FINDER   # RESULT = 3（"th[is]…"）
 
 # 文字列→整数（既定16進）
 "00FF"     -> STRTOL          # RESULT = 255
@@ -109,14 +109,14 @@ STATUS -> GVAR\\\[0]
 # 整数→1文字（グリフ化）。文字リテラル 'A' は int 65 の別表記
 65   -> CHR                   # SRESULT = "A"
 'A'  -> CHR                   # SRESULT = "A"（'A' == 65）
-ARG\\\[0] -> CHR -> STDOUT      # 受信バイト(int)を文字でエコー
+ARG[0] -> CHR -> STDOUT       # 受信バイト(int)を文字でエコー
 
 # 切り出し・連結（1始まり）
 "HELLO WORLD", 1, 5 -> SLICER # SRESULT = "HELLO"
 "NO ", "MUSIC"      -> MERGER # SRESULT = "NO MUSIC"
 
 # 大小・トリム
-"Send\\\_Ok"      -> UPPER       # SRESULT = "SEND\\\_OK"
+"Send_Ok"      -> UPPER       # SRESULT = "SEND_OK"
 "  hi there  " -> TRIMMER     # SRESULT = "hi there"
 ```
 
@@ -127,7 +127,7 @@ ARG\\\[0] -> CHR -> STDOUT      # 受信バイト(int)を文字でエコー
 
 ```
 "id=%04d name=%s", 7, "jiro" -> FORMATTER
-SRESULT -> SGVAR\\\[0]          # "id=0007 name=jiro"
+SRESULT -> SGVAR[0]          # "id=0007 name=jiro"
 ```
 
 * 整数を取る変換: `d i u o x X c`
@@ -149,7 +149,7 @@ UART 応答などを分解するのに便利です。
 * 連続した区切りはまとめて1つ扱い、前後の区切りは無視します（＝「N番目の単語」を取る挙動）。
 * `N` が範囲外、または空文字列のときは `""`。
 
-\---
+---
 
 ## メタ／動的ディスパッチ
 
@@ -160,13 +160,13 @@ UART 応答などを分解するのに便利です。
 
 ```
 # 文字列で指定したハンドラを動的に呼ぶ
-"MYHANDLER", 1, 2, 3 -> INVOKER     # 次の tick で ON MYHANDLER が ARG\\\[0..2]=1,2,3 で動く
+"MYHANDLER", 1, 2, 3 -> INVOKER     # 次の tick で ON MYHANDLER が ARG[0..2]=1,2,3 で動く
 ```
 
 * 名前が未登録、または対応する `ON …` が無い場合は**黙って無視**されます（遅延束縛）。
 * これにより「応答コード→ハンドラ名」のようなジャンプテーブルや状態機械が書けます。
 
-\---
+---
 
 ## チェインの例（実践）
 
@@ -174,19 +174,18 @@ UART 応答などを分解するのに便利です。
 UART で受けた1行を整形してパースする典型例：
 
 ```
-# RXLINE = "  send 0001 0002 ok  \\\\r\\\\n" のような1行だとして
-RXLINE -> TRIMMER -> UPPER -> SGVAR\\\[0]
-# SGVAR\\\[0] = "SEND 0001 0002 OK"
+# RXLINE = "  send 0001 0002 ok  \r\n" のような1行だとして
+RXLINE -> TRIMMER -> UPPER -> SGVAR[0]
+# SGVAR[0] = "SEND 0001 0002 OK"
 
 # 2番目のフィールドを取り出して16進数として読む
-SGVAR\\\[0], " ", 2 -> FIELD -> STRTOL
-RESULT -> GVAR\\\[0]                      # GVAR\\\[0] = 1（"0001" を16進解釈）
+SGVAR[0], " ", 2 -> FIELD -> STRTOL
+RESULT -> GVAR[0]                      # GVAR[0] = 1（"0001" を16進解釈）
 ```
 
 > ヒント: 文字列を産出するポートの読み出しは、1つの引数リストにつき1個までです
 > （複数を直接並べたいときは、いったんスロットに退避してから渡してください）。
 
-\---
+---
 
 最終更新: Yajir v0.4 時点の組み込みポート。
-
