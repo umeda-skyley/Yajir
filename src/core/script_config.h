@@ -24,7 +24,7 @@
 #define CFG_SARG_LEN        32    /* SARG 1本の受信文字列バッファ長（終端含む） */
 
 /* テーブル上限（§12） */
-#define CFG_MAX_PORTS       48    /* 最大ポート数（組込み21＋ホスト分の余裕。超えると後勝ちで黙ってregister失敗） */
+#define CFG_MAX_PORTS       56    /* 最大ポート数（組込み〜29＋ホスト分の余裕。超えると後勝ちで黙ってregister失敗） */
 #define CFG_MAX_BLOCKS      16    /* 最大ブロック（INIT/MAIN/ON…）数 */
 #define CFG_MAX_RESOURCES   32    /* ホストCリソース登録数（def_*が束縛する先） */
 #define CFG_MAX_ALIAS       16    /* def_alias の最大数（コンパイル時のみ・名前→スロット/数値/文字列） */

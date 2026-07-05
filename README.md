@@ -48,6 +48,15 @@ END
 
 ## 変更履歴
 
+### 変更履歴（v0.4.2 → v0.4.3）
+
+**数値ユーティリティ・ポート群を標準装備に追加（`RAND`/`SEED`・`CLAMP`・`MAP`・`MIN`/`MAX`・`ABS`）＝ 文字列ユーティリティ（`SLICER` 等）の数値版**（§3, §9）。「変換はポート」に則り、乱数・飽和・線形写像・最小/最大/絶対値を int産出のポートとして提供する。`register_mathutils()` を `register_builtins()` から呼ぶ形で、文字列版（`register_strutils`）と同じ骨格・同じ登録経路に乗せた。
+
+- **`RAND`（in・非負乱数源）＋ `SEED`（out・再シード）**: `RAND` は 0..2³¹-1 の非負整数を1つ産む値源（範囲は既存の `%` で作る＝`RAND % 6 + 1` でサイコロ）。実体は **libc `rand()` に移譲せず自前の xorshift32**（状態1ワードをアリーナ内 `rng_state` に置く・再現的・full 32bit・状態0は既定種へ自動退避）。符号ビットを落として非負域に固定し、`RAND % N` が負にならないことを保証。`値 -> SEED` でスクリプトから再シード（`NOW -> SEED` で実行ごとに列を変える）、ホストは起動時に `script_srand(entropy)` でADC雑音/UID等の種を注入できる。※暗号用途ではない（ジッタ/バックオフ/ディザ/ゲーム向けの実用乱数）。
+- **`CLAMP`（x,lo,hi）/ `MAP`（x,inLo,inHi,outLo,outHi）**: 組み込みの定番。`CLAMP` は値を範囲に飽和、`MAP` は Arduino `map()` 相当の線形リスケール（ADC→実単位）。`MAP` は中間積を int64 で計算してオーバーフローを回避し、`inHi==inLo`（レンジ幅0）は既存の 0除算方針どおり `RESULT=0`＋`ERR_DIVZERO`（止めずにフラグで気づく）。`MAP` はレンジ外を外挿するので、端で止めたいときは `CLAMP` と併用する。
+- **`MIN`/`MAX`（可変長）・`ABS`**: 縮約と絶対値。`ABS(INT32_MIN)` は反転不能（UB）ゆえ `INT32_MAX` に飽和させる。
+- 付随: `CFG_MAX_PORTS 48→56`（組込みポートが29本になったため余裕を確保）。ショーケース `scripts/mathdemo.yaj`（模擬ADC→`MAP`→`CLAMP`→`MIN`/`MAX`/`ABS` の一連）と、ユニットテスト `tests/test_phase10_math.c`（26チェック）を追加。
+
 ### 変更履歴（v0.4.1 → v0.4.2）
 
 **値の型を int / str の2択に純化する（内部 CHAR タグを撤去）＋ 文字リテラル `'A'` ＋ 変換Utility `CHR` の3点セット**（§2, §3, §5, §9, §10, §11）。

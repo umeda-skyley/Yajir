@@ -108,6 +108,9 @@ typedef struct {
     /* 異常フラグ集合（§12 STATUS）。ERR_xxx ビットの論理和。 */
     int32_t status;
 
+    /* xorshift32 PRNG 状態（RAND/SEED, §3 v0.4.3）。0は縮退ゆえ mathutil 側で既定シードへ落とす。 */
+    uint32_t rng_state;
+
     /* ポート表（§3） */
     port_t  ports[CFG_MAX_PORTS];
     int     nports;

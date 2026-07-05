@@ -24,7 +24,7 @@
 
 /* Yajir 言語/実装バージョン。スクリプトからは入力ポート VERSION（str産出）で、
  * ホストからは script_version() で読める（§11, v0.4）。 */
-#define SCRIPT_VERSION "0.4.2"
+#define SCRIPT_VERSION "0.4.3"
 
 /* 出力ポートが受け取る値（型タグ付き）。SV_INTは数値、SV_STRは script_str()で文字列に
  * 解決して出力する（v0.4.2でCHARタグ撤去＝値は int/str の2択・§9。数を文字グリフで出すのは
@@ -57,6 +57,11 @@ void script_register_handler(const char *name);   /* ハンドラ源・産出non
 
 /* --- 関数ポートthunkから戻り値をRESULTへ（§4, §11） --- */
 void script_set_result(int32_t v);
+
+/* --- 乱数シード注入（RAND/SEED ポートの PRNG, §3 v0.4.3）---
+ * ホストが起動時に ADCノイズ/UID/tick 等のエントロピーで種を入れる。省略時は既定の固定種
+ * （再現的）。スクリプト側は `値 -> SEED` で再シードできる。0 を渡しても内部で既定種に落ちる。 */
+void script_srand(uint32_t seed);
 
 /* 文字列プールのオフセット→C文字列（出力ポートがSTR値を出すときに使う） */
 const char *script_str(int32_t offset);

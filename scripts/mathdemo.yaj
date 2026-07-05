@@ -1,0 +1,36 @@
+// mathdemo.yaj - 数値ユーティリティのショーケース（v0.4.3）
+//
+// v0.4.3 で入った数値ポートを「模擬センサ → 実単位換算 → 監視」の一連で使う:
+//   RAND / SEED … 乱数で 12bit ADC 値を模擬（RAND % 4096）
+//   MAP         … 生ADC(0..4095) を パーセント(0..100) へ線形換算
+//   CLAMP       … 有効動作帯 10..90% に飽和（外れ値を端へ）
+//   MIN / MAX   … これまでの最小・最大（実測レンジ）を GVAR に保持
+//   ABS         … 目標値(50%)からの誤差の大きさ |x-50|
+//
+// ループ構文は無いので MAIN が繰り返し、統計は GVAR に持つ（fib.yaj と同じ考え方）。
+// RAND は自前 xorshift32。NOW でシードするので実行ごとに乱数列が変わる
+// （毎回同じ列を再現したいなら "12345 -> SEED" のように固定値を入れる）。
+//
+// PCで試す: build\script.exe run scripts\mathdemo.yaj 5
+
+INIT
+    NOW -> SEED           // 実行ごとに種を変える（固定にしたければ定数を SEED へ）
+    100 -> GVAR[0]        // min-seen を最大値で初期化（以後 MIN が下げていく）
+    0   -> GVAR[1]        // max-seen を最小値で初期化（以後 MAX が上げていく）
+END
+
+MAIN
+    RAND % 4096 -> VAR[0]                 // 模擬 12bit ADC: 0..4095
+    VAR[0], 0, 4095, 0, 100 -> MAP        // → パーセント 0..100
+    RESULT -> VAR[1]
+    VAR[1], 10, 90 -> CLAMP               // 有効帯 10..90% に飽和
+    RESULT -> VAR[2]
+
+    GVAR[0], VAR[2] -> MIN -> GVAR[0]     // これまでの最小を更新（読んで書く：評価が先）
+    GVAR[1], VAR[2] -> MAX -> GVAR[1]     // これまでの最大を更新
+    VAR[2] - 50 -> ABS -> VAR[3]          // 目標 50% からの誤差 |x-50|
+
+    "adc=", VAR[0], " -> ", VAR[2], "%  (min=", GVAR[0], " max=", GVAR[1], " err=", VAR[3], ")" -> STDOUT
+
+    300 -> WAIT                           // 出力ペース
+END

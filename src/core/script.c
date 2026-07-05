@@ -9,6 +9,7 @@
 #include "script.h"
 #include "vm.h"
 #include "strutil.h"
+#include "mathutil.h"
 
 /* ---- ポート表ヘルパ（コンパイラからも使う） ---- */
 
@@ -102,6 +103,7 @@ static void register_builtins(void)
     script_register_const("ERR_DIVZERO",    ERR_DIVZERO);
     script_register_const("ERR_STR_TRUNC",  ERR_STR_TRUNC);
     register_strutils();   /* SLICER/MERGER/COUNTER/FORMATTER/EQUALS/FINDER（§3） */
+    register_mathutils();  /* RAND/SEED/CLAMP/MAP/MIN/MAX/ABS（§3, v0.4.3） */
     script_register_out("INVOKER", th_invoker);   /* 動的ディスパッチ（メタ・可変arity, §10） */
     /* HANDLER は「最初から在るハンドラ源チャネル1本」。これで -> HANDLER / ON HANDLER は
      * 名前付きハンドラ（MYHANDLER 等）と完全に同じ経路を通る（v0.3.7+ 一本化）。 */
