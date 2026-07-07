@@ -7,36 +7,82 @@
 #ifndef SCRIPT_CONFIG_H
 #define SCRIPT_CONFIG_H
 
+/* Platform/build-specific overrides.
+ *
+ * Define YJ_CONFIG_HEADER as a quoted header name from the build system, e.g.
+ *   /DYJ_CONFIG_HEADER=\"yajir_config_pc.h\"
+ * or
+ *   -DYJ_CONFIG_HEADER=\"board_config.h\"
+ * The included header may #define any CFG_* value before the defaults below.
+ */
+#ifdef YJ_CONFIG_HEADER
+#include YJ_CONFIG_HEADER
+#endif
+
 /* 固定スロット（§4） */
+#ifndef CFG_GVAR_COUNT
 #define CFG_GVAR_COUNT      8     /* GVAR[] 要素数（永続） */
+#endif
+#ifndef CFG_VAR_COUNT
 #define CFG_VAR_COUNT       8     /* VAR[]  要素数（揮発） */
+#endif
+#ifndef CFG_ARG_COUNT
 #define CFG_ARG_COUNT       4     /* ARG[]  最大数（受信引数） */
+#endif
 
 /* 文字列スロット（§4 文字列スロット・案A） */
+#ifndef CFG_SGVAR_COUNT
 #define CFG_SGVAR_COUNT     4     /* SGVAR[] 本数（永続・文字列） */
+#endif
+#ifndef CFG_SVAR_COUNT
 #define CFG_SVAR_COUNT      4     /* SVAR[]  本数（揮発・文字列） */
+#endif
+#ifndef CFG_SSTR_LEN
 #define CFG_SSTR_LEN        64    /* 文字列スロット1本のバッファ長（終端含む） */
+#endif
 
 /* 受信文字列引数スロット（§4, §10, v0.3.5）。ARG[k]/SARG[k] は同位置の型2ビュー。
  * 文字列は先頭 CFG_SARG_COUNT 位置にだけ置ける（SARG[k] は位置 k と共有）。
  * 例: (int, int, str) のように位置2に文字列を置くなら 3 以上が必要。 */
+#ifndef CFG_SARG_COUNT
 #define CFG_SARG_COUNT      4     /* SARG[] 本数（= str 引数を置ける先頭位置数）。位置3まで文字列可 */
+#endif
+#ifndef CFG_SARG_LEN
 #define CFG_SARG_LEN        32    /* SARG 1本の受信文字列バッファ長（終端含む） */
+#endif
 
 /* テーブル上限（§12） */
+#ifndef CFG_MAX_PORTS
 #define CFG_MAX_PORTS       56    /* 最大ポート数（組込み〜29＋ホスト分の余裕。超えると後勝ちで黙ってregister失敗） */
+#endif
+#ifndef CFG_MAX_BLOCKS
 #define CFG_MAX_BLOCKS      16    /* 最大ブロック（INIT/MAIN/ON…）数 */
+#endif
+#ifndef CFG_MAX_RESOURCES
 #define CFG_MAX_RESOURCES   32    /* ホストCリソース登録数（def_*が束縛する先） */
+#endif
+#ifndef CFG_MAX_ALIAS
 #define CFG_MAX_ALIAS       16    /* def_alias の最大数（コンパイル時のみ・名前→スロット/数値/文字列） */
+#endif
 
 /* VM 実行資源（§12） */
+#ifndef CFG_STACK_DEPTH
 #define CFG_STACK_DEPTH     32    /* オペランドスタック深さ */
+#endif
+#ifndef CFG_NEST_LIMIT
 #define CFG_NEST_LIMIT      4     /* IFYESネスト上限（§7：4段静的確保） */
+#endif
+#ifndef CFG_INSTR_BUDGET
 #define CFG_INSTR_BUDGET    20000 /* 1 tickあたりの命令数バジェット（暴走防止） */
+#endif
 
 /* イベント/タイマ（§8, §10） */
+#ifndef CFG_EVENT_QUEUE_LEN
 #define CFG_EVENT_QUEUE_LEN 16    /* イベントキュー長（固定長・溢れドロップ） */
+#endif
+#ifndef CFG_TIMER_SLOTS
 #define CFG_TIMER_SLOTS     4     /* タイマスロット数（=4目安） */
+#endif
 
 /* 周期ON（ON <ms>）が満期を取りこぼしたときの方針（コンパイルオプション, §6）。
  * 仕様の既定は catch-up。ビルド時に /DTS_PERIODIC_CATCHUP=0 を渡せば coalesce に切替。
@@ -54,17 +100,25 @@
 #endif
 
 /* コンパイル後のサイズ */
+#ifndef CFG_CODE_SIZE
 #define CFG_CODE_SIZE       2048  /* バイトコードバッファ（バイト）。PERサンプルで約400B使用＝2KBで十分 */
+#endif
+#ifndef CFG_STRPOOL_SIZE
 #define CFG_STRPOOL_SIZE    1024  /* 文字列定数プール（バイト） */
+#endif
 
 /* 識別子 */
+#ifndef CFG_MAX_NAME
 #define CFG_MAX_NAME        24    /* ポート名/リソース名の最大長（終端含む） */
+#endif
 
 /* 行デリミタ（§2）。端末の改行は CR / CRLF が多い。既定では CR・LF のどちらも行末として
  * 受理し、CRLF は1改行に畳む（CR / LF / CRLF いずれも1論理行・行番号は正確）＝どの端末でも動く。
  * CFG_LINE_DELIM は「行末を表す主デリミタ」（既定 CR）。1文字に厳密化したいときは
  * CFG_LINE_DELIM_STRICT=1 にする（CFG_LINE_DELIM 以外の CR/LF は空白として読み飛ばす）。 */
+#ifndef CFG_LINE_DELIM
 #define CFG_LINE_DELIM        '\r'
+#endif
 #ifndef CFG_LINE_DELIM_STRICT
 #define CFG_LINE_DELIM_STRICT 0
 #endif
