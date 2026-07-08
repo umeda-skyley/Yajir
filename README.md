@@ -48,6 +48,14 @@ END
 
 ## 変更履歴
 
+### 変更履歴（v0.4.3 → v0.4.4）
+
+**有界ループ `REPEAT` ／ 反復カウンタ `ITR` ／ スロットの動的添字アクセス `N -> SLOT` の3点セット**（§3, §4, §7）。初期の割り切り「ループ無し・添字は定数のみ」を、実用スクリプトの配列反復のために2つとも解く。安全性は既存の命令数バジェットと benign-0 縮退でほぼ据え置き（後方互換）。
+
+- **`N -> REPEAT … END`（有界ループ）＋ `ITR`（1..N）**: 本体を N 回実行、`ITR` は本体内だけの反復カウンタ（1始まり・最内ループを指す）。ネストは `CFG_LOOP_NEST=4` 段。**`REPEAT` 内で `WAIT` はコンパイルエラー（`ERR_WAIT_IN_LOOP`）**——これにより `REPEAT` は「1 tick 内で完結し決してティックをまたがない within-tick 構造」になり、ループ状態を yield またぎで永続化する必要が無い。深い N は命令数バジェット超過で **`END` の直後へ打ち切り＋`ERR_BUDGET`**（クラッシュせず観測可能）。役割の線引き＝`REPEAT` は同期・within-tick の計算用、時間を進める反復は従来どおり `ON <周期>`／self-post。
+- **動的添字 `N -> SLOT`（read）／`idx, val -> SLOT`（write）**: スロット名を裸のポートとして使うと実行時に決まる添字でアクセスできる。**第1引数が添字（1始まり）**——`N -> VAR` は `VAR[N-1]` を産出、`idx, val -> VAR` は `VAR[idx-1] = val` して書いた値を産出。産出型はスロットの要素型なので**そのままチェインに乗る**（`ITR -> VAR -> STDOUT` 走査・`ITR, 式 -> VAR` 充填）。範囲外は benign（read=0/空文字、write=no-op）でメモリ安全は実行時境界チェックが担保。書く値の型は静的 `ERR_TYPE_MISMATCH`、`ARG`/`SARG` は read のみ（write は `ERR_BAD_POSITION`）。
+- 実装: 新opcode `REPEAT_INIT`/`REPEAT_NEXT`/`LOAD_ITR`/`INDEX`、vm 構造体にループフレーム、`CFG_LOOP_NEST=4`。ユニットテスト `tests/test_phase11_loops.c`（30チェック）、サンプル `scripts/loopdemo.yaj`（配列を乱数充填→走査で合計/最大）・`scripts/wolfram_ca.yaj`（Rule 30 一次元セルオートマトン）を追加。
+
 ### 変更履歴（v0.4.2 → v0.4.3）
 
 **数値ユーティリティ・ポート群を標準装備に追加（`RAND`/`SEED`・`CLAMP`・`MAP`・`MIN`/`MAX`・`ABS`）＝ 文字列ユーティリティ（`SLICER` 等）の数値版**（§3, §9）。「変換はポート」に則り、乱数・飽和・線形写像・最小/最大/絶対値を int産出のポートとして提供する。`register_mathutils()` を `register_builtins()` から呼ぶ形で、文字列版（`register_strutils`）と同じ骨格・同じ登録経路に乗せた。

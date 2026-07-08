@@ -1,0 +1,58 @@
+// wolfram_ca_v44.yaj - REPEAT版 Wolfram 1D cellular automaton
+//
+// 設定:
+//   RULE    : 0..255 のWolframルール番号。30, 90, 110 など。
+//   STEPS   : 1世代目からこの世代番号まで表示する。
+//   INITIAL : 初期状態。# が生セル、. が死セル。
+//
+// REPEATで1世代分のセルを同一tick内に計算する。
+// 固定スロットは [] 表記、実行時添字が必要な場面だけ N -> SLOT を使う方針。
+
+def_alias(RULE, 30)
+def_alias(STEPS, 24)
+def_alias(INITIAL, "....................#....................")
+
+INIT
+    RULE -> GVAR[0]          // rule number
+    0 -> GVAR[1]             // generation
+    INITIAL -> SGVAR[0]      // current row
+    SGVAR[0] -> COUNTER -> GVAR[2]   // row width
+END
+
+MAIN
+    (GVAR[1] <= STEPS) -> IFYES
+        "gen %02d: %s", GVAR[1], SGVAR[0] -> FORMATTER -> STDOUT
+        "" -> SGVAR[1]       // next row
+
+        GVAR[2] -> REPEAT
+            0 -> VAR[0]      // neighborhood code: left*4 + center*2 + right
+
+            (ITR > 1) -> IFYES
+                SGVAR[0], ITR - 1, 1 -> SLICER
+                "#", SRESULT -> EQUALS
+                VAR[0] + RESULT * 4 -> VAR[0]
+            END
+
+            SGVAR[0], ITR, 1 -> SLICER
+            "#", SRESULT -> EQUALS
+            VAR[0] + RESULT * 2 -> VAR[0]
+
+            (ITR < GVAR[2]) -> IFYES
+                SGVAR[0], ITR + 1, 1 -> SLICER
+                "#", SRESULT -> EQUALS
+                VAR[0] + RESULT -> VAR[0]
+            END
+
+            ((GVAR[0] >> VAR[0]) & 1) -> IFYES
+                SGVAR[1], "#" -> MERGER -> SGVAR[1]
+            ELSE
+                SGVAR[1], "." -> MERGER -> SGVAR[1]
+            END
+        END
+
+        SGVAR[1] -> SGVAR[0]
+        GVAR[1] + 1 -> GVAR[1]
+    ELSE
+        1000000 -> WAIT
+    END
+END

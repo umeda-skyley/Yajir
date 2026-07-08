@@ -76,6 +76,14 @@ typedef enum {
     /* --- スタック調整 --- */
     OP_POP,              /* 先頭を1つ捨てる（arity正規化で「最左を残す」ため） */
 
+    /* --- 有界ループ / 動的添字（§4, §7, v0.4.4） --- */
+    OP_REPEAT_INIT,      /* U16 end : N=pop。N<=0 は end へ分岐。else ループフレーム(iter=1,limit=N)を積む */
+    OP_REPEAT_NEXT,      /* U16 top : 最内フレーム iter++。<=limit なら top へ、else pop して通過。
+                            バジェット切れは打ち切り＝ERR_BUDGET を立て pop して通過（within-tick） */
+    OP_LOAD_ITR,         /*        : 最内ループの反復カウンタ(1..N)を積む（REPEAT外では0） */
+    OP_INDEX,            /* U8 islot, U8 argc : 動的添字。argc==1=read / >=2=write。第1引数=添字(1始まり)。
+                            産出はスロット型で RESULT/SRESULT へ。範囲外は benign（read=0/空・write=no-op） */
+
     OP__COUNT
 } opcode_t;
 

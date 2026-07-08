@@ -24,7 +24,7 @@
 
 /* Yajir 言語/実装バージョン。スクリプトからは入力ポート VERSION（str産出）で、
  * ホストからは script_version() で読める（§11, v0.4）。 */
-#define SCRIPT_VERSION "0.4.3"
+#define SCRIPT_VERSION "0.4.4"
 
 /* 出力ポートが受け取る値（型タグ付き）。SV_INTは数値、SV_STRは script_str()で文字列に
  * 解決して出力する（v0.4.2でCHARタグ撤去＝値は int/str の2択・§9。数を文字グリフで出すのは
@@ -107,6 +107,7 @@ typedef enum {
     ERR_UNKNOWN_NAME,    /* 未登録の入力ポート/const/源。tok=その名前 */
     ERR_TYPE_MISMATCH,   /* int/str スロットの型違い代入（§4） */
     ERR_WAIT_IN_ON,      /* ON ハンドラ内の WAIT（§7） */
+    ERR_WAIT_IN_LOOP,    /* REPEAT ループ内の WAIT（§7, v0.4.4。within-tick 維持のため禁止） */
     ERR_BAD_SLOT_INDEX,  /* 添字が定数でない/範囲外（§4, §12） */
     ERR_NEST_TOO_DEEP,   /* ネスト上限超過（§12） */
     ERR_BAD_POSITION,    /* ポート向き違反: in を右辺 / out を左辺 / 産出noneを中間（§3, v0.3.8） */
@@ -136,6 +137,7 @@ void script_tick(void);
 #define ERR_TIMER_FULL 0x02   /* タイマスロット満杯 */
 #define ERR_DIVZERO    0x04   /* 0除算・0剰余 */
 #define ERR_STR_TRUNC  0x08   /* 文字列バッファ切り詰め */
+#define ERR_BUDGET     0x10   /* REPEAT が命令数バジェットで打ち切られた（§7, v0.4.4） */
 
 int32_t script_get_status(void);            /* 現在の異常フラグ集合 */
 void    script_clear_status(int32_t bits);  /* 指定ビットを明示クリア */

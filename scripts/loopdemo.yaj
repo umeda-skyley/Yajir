@@ -1,0 +1,36 @@
+// loopdemo.yaj - REPEAT / ITR / 動的添字アクセスのショーケース（v0.4.4）
+//
+// 配列(VAR)を「ループで埋めて → ループで走査」する典型パターン:
+//   N -> REPEAT … END と ITR(1..N)   … 固定回ループと反復カウンタ
+//   ITR, 値 -> VAR                    … 動的ライト（VAR[ITR-1] に書く）
+//   ITR -> VAR                        … 動的リード（VAR[ITR-1] を読む・チェイン可）
+// v0.4.3 の RAND / MAX も併用し、8個の擬似センサ値の各要素・合計・最大を出す。
+//
+// REPEAT は「1 tick 内で完結する計算」なので中で WAIT は書けない（コンパイルエラー）。
+// ペース配分の WAIT はループの外（MAIN 末尾）に置く。
+//
+// PCで試す: build\script.exe run scripts\loopdemo.yaj 5
+
+MAIN
+    NOW -> SEED                          // 実行ごとに乱数列を変える
+
+    // --- 8要素の配列を乱数で埋める（動的ライト） ---
+    8 -> REPEAT
+        ITR, RAND % 100 -> VAR           // VAR[ITR-1] = 0..99
+    END
+
+    // --- 走査して各要素・合計・最大を求める（動的リード） ---
+    0 -> GVAR[0]                          // 合計
+    0 -> GVAR[1]                          // 最大
+    8 -> REPEAT
+        ITR -> VAR -> GVAR[2]             // v = VAR[ITR-1]
+        GVAR[0] + GVAR[2] -> GVAR[0]      // 合計 += v
+        GVAR[1], GVAR[2] -> MAX -> GVAR[1]// 最大 = max(最大, v)
+        "  VAR[", ITR, "] = ", GVAR[2] -> STDOUT
+    END
+
+    "sum=", GVAR[0], " max=", GVAR[1] -> STDOUT
+    "----" -> STDOUT
+
+    2000 -> WAIT                          // 次の一巡まで待つ（REPEATの外＝OK）
+END

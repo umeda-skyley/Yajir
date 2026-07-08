@@ -72,6 +72,9 @@
 #ifndef CFG_NEST_LIMIT
 #define CFG_NEST_LIMIT      4     /* IFYESネスト上限（§7：4段静的確保） */
 #endif
+#ifndef CFG_LOOP_NEST
+#define CFG_LOOP_NEST       4     /* REPEATループのネスト上限（§7, v0.4.4） */
+#endif
 #ifndef CFG_INSTR_BUDGET
 #define CFG_INSTR_BUDGET    20000 /* 1 tickあたりの命令数バジェット（暴走防止） */
 #endif

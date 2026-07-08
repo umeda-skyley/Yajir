@@ -147,7 +147,8 @@ static void run_handler(int bi)
     int budget = CFG_INSTR_BUDGET;     /* ハンドラ毎のバジェット（§1） */
     int32_t ms = 0;
     vm()->sp = 0;
-    /* ループ構文が無い v0 ではハンドラは有界。budget切れは暴走ガード。 */
+    vm()->loop_sp = 0;   /* ループフレームは block ごとにリセット（EXIT/エラーの途中脱出保険, v0.4.4） */
+    /* budget切れは暴走ガード（REPEAT は後退辺で打ち切り＝ERR_BUDGET, §7 v0.4.4）。 */
     vm_exec(&pc, &budget, &ms, /*in_main=*/false);
 }
 
@@ -182,6 +183,7 @@ static void advance_main(int32_t now)
         c->waiting = false;               /* 起床。pcはWAITの次を指している */
     }
     m->sp = 0;   /* MAINは文境界(=WAIT)でyieldするのでスタックは空 */
+    m->loop_sp = 0;   /* REPEAT は within-tick で完結（WAITまたぎ不可）ゆえ常に0（保険, v0.4.4） */
     s = vm_exec(&c->pc, &budget, &ms, /*in_main=*/true);
     if (s == EXEC_YIELD) {
         c->waiting = true;
@@ -243,6 +245,7 @@ static void advance_init(int32_t now)
         c->waiting = false;
     }
     m->sp = 0;
+    m->loop_sp = 0;   /* v0.4.4 */
     s = vm_exec(&c->pc, &budget, &ms, /*in_main(yield可)=*/true);  /* WAITをINITでも許可 */
     if (s == EXEC_YIELD) {
         c->waiting = true;

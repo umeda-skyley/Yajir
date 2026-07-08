@@ -68,6 +68,16 @@ typedef struct {
     char         sstr[CFG_SARG_COUNT][CFG_SARG_LEN];/* str位置 k(<N_SARG) の文字列 */
 } event_t;
 
+/* ---- ループフレーム（§7 REPEAT, v0.4.4）。WAIT 禁止ゆえティックをまたがない（within-tick）。 ---- */
+typedef struct {
+    int32_t iter;    /* 現在の反復カウンタ（1..limit）＝ ITR */
+    int32_t limit;   /* 入口でスナップショットした N */
+} loop_frame_t;
+
+/* 動的添字アクセス（N -> SLOT, §4 v0.4.4）のスロット識別（OP_INDEX オペランド）。
+ * VAR/GVAR/ARG=int スロット、SVAR/SGVAR/SARG=str スロット。ARG/SARG は read のみ（受信専用）。 */
+enum { ISLOT_VAR = 0, ISLOT_GVAR = 1, ISLOT_ARG = 2, ISLOT_SVAR = 3, ISLOT_SGVAR = 4, ISLOT_SARG = 5 };
+
 /* ---- タイマスロット（§8） ---- */
 typedef struct {
     bool    active;
@@ -110,6 +120,11 @@ typedef struct {
 
     /* xorshift32 PRNG 状態（RAND/SEED, §3 v0.4.3）。0は縮退ゆえ mathutil 側で既定シードへ落とす。 */
     uint32_t rng_state;
+
+    /* ループフレームスタック（§7 REPEAT, v0.4.4）。REPEAT は within-tick ゆえ block 実行内で
+     * push/pop が完結し、tick をまたがない（loop_sp は各 block 開始時 0）。 */
+    loop_frame_t loop[CFG_LOOP_NEST];
+    int          loop_sp;
 
     /* ポート表（§3） */
     port_t  ports[CFG_MAX_PORTS];

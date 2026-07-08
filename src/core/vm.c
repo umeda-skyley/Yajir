@@ -128,7 +128,11 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
         uint16_t ip;          /* この命令の開始位置（budget中断時の再開点） */
         uint8_t  op;
 
-        if (*budget <= 0) { *pc = p; return EXEC_BUDGET; }
+        if (*budget <= 0) {
+            /* ループ内では命令の途中で切らない（式評価中に sp を失うと壊れる）。バジェット切れは
+             * REPEAT の後退辺 OP_REPEAT_NEXT が文境界（sp=ベースライン）で打ち切る（§7, v0.4.4）。 */
+            if (m->loop_sp == 0) { *pc = p; return EXEC_BUDGET; }
+        }
         (*budget)--;
 
         ip = p;
@@ -362,6 +366,76 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
         case OP_POP:
             m->sp--;
             break;
+
+        /* ---- 有界ループ（§7, v0.4.4） ---- */
+        case OP_REPEAT_INIT: {   /* U16 end : N=pop。N<=0 は本体を飛ばす。else フレームを積む */
+            uint16_t end = (uint16_t)(code[p] | (code[p+1] << 8)); p += 2;
+            int32_t n = m->stack[--m->sp].i;
+            if (n <= 0) { p = end; break; }                  /* 0回：本体スキップ */
+            if (m->loop_sp >= CFG_LOOP_NEST) { *pc = ip; return EXEC_ERROR; }  /* 保険（compilerが上限を弾く） */
+            m->loop[m->loop_sp].iter  = 1;
+            m->loop[m->loop_sp].limit = n;
+            m->loop_sp++;
+            break;
+        }
+        case OP_REPEAT_NEXT: {   /* U16 top : 反復判定。バジェット切れは打ち切り＋ERR_BUDGET（within-tick） */
+            uint16_t top = (uint16_t)(code[p] | (code[p+1] << 8)); p += 2;
+            loop_frame_t *f;
+            if (m->loop_sp <= 0) { *pc = ip; return EXEC_ERROR; }
+            f = &m->loop[m->loop_sp - 1];
+            if (*budget <= 0) {                              /* バジェット切れ：文境界で打ち切り（§7） */
+                vm_set_err(ERR_BUDGET);
+                m->loop_sp--;                                /* pop。p は NEXT の次＝ループ後を指す */
+            } else if (++f->iter <= f->limit) {
+                p = top;                                     /* 次の反復へ */
+            } else {
+                m->loop_sp--;                                /* 完了：pop して通過 */
+            }
+            break;
+        }
+        case OP_LOAD_ITR:        /* 最内ループの反復カウンタ（1..N）。REPEAT外なら0（compilerが弾く） */
+            if (m->sp >= CFG_STACK_DEPTH) { *pc = ip; return EXEC_ERROR; }
+            m->stack[m->sp++] = val_int(m->loop_sp > 0 ? m->loop[m->loop_sp - 1].iter : 0);
+            break;
+
+        /* ---- 動的添字アクセス（§4, v0.4.4）。argc==1=read / >=2=write。産出は RESULT/SRESULT ---- */
+        case OP_INDEX: {
+            uint8_t islot = code[p++];
+            uint8_t argc  = code[p++];
+            int base = m->sp - argc;
+            int is_str = (islot >= ISLOT_SVAR);   /* SVAR/SGVAR/SARG が str */
+            int32_t idx, i0;
+            if (base < 0) { *pc = ip; return EXEC_ERROR; }
+            idx = (argc >= 1) ? m->stack[base].i : 0;
+            i0  = idx - 1;                        /* 1始まり → 0始まり */
+            if (is_str) {
+                int kind = (islot == ISLOT_SVAR)  ? SSLOT_SVAR  :
+                           (islot == ISLOT_SGVAR) ? SSLOT_SGVAR : SSLOT_SARG;
+                char *buf = sslot_buf(kind, i0);              /* 範囲外は NULL */
+                if (argc >= 2) {                              /* write（ARG/SARG は compiler が弾く） */
+                    const char *s = vm_resolve_str(m->stack[base + 1]);
+                    if (buf) vm_store_sstr(kind, i0, s);      /* 範囲外は no-op */
+                    script_set_sresult(buf ? s : "");         /* 産出＝書いた値（範囲外は空） */
+                } else {                                      /* read */
+                    script_set_sresult(buf ? buf : "");
+                }
+            } else {
+                value_t *arr = (islot == ISLOT_VAR)  ? m->var  :
+                               (islot == ISLOT_GVAR) ? m->gvar : m->arg;
+                int count    = (islot == ISLOT_VAR)  ? CFG_VAR_COUNT  :
+                               (islot == ISLOT_GVAR) ? CFG_GVAR_COUNT : CFG_ARG_COUNT;
+                int in_range = (i0 >= 0 && i0 < count);
+                if (argc >= 2) {                              /* write */
+                    value_t v = m->stack[base + 1];
+                    if (in_range) arr[i0] = v;
+                    m->result = in_range ? v : val_int(0);
+                } else {                                      /* read */
+                    m->result = in_range ? arr[i0] : val_int(0);
+                }
+            }
+            m->sp = base;
+            break;
+        }
 
         default:
             *pc = ip;

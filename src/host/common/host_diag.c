@@ -18,8 +18,9 @@ const char *script_strerror(script_err_t code)
         case ERR_UNKNOWN_NAME:   return "unknown name";
         case ERR_TYPE_MISMATCH:  return "type mismatch (int/string slot)";
         case ERR_WAIT_IN_ON:     return "WAIT not allowed in ON handler";
+        case ERR_WAIT_IN_LOOP:   return "WAIT not allowed inside REPEAT loop";
         case ERR_BAD_SLOT_INDEX: return "bad slot index (must be constant & in range)";
-        case ERR_NEST_TOO_DEEP:  return "IFYES nesting too deep";
+        case ERR_NEST_TOO_DEEP:  return "IFYES/REPEAT nesting too deep";
         case ERR_BAD_POSITION:   return "bad port position (in on right / out on left / wrong direction)";
         case ERR_TOO_MANY_PORTS: return "too many ports (def_handler exceeded the port table)";
         case ERR_SYNTAX:         return "syntax error";

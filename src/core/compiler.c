@@ -23,6 +23,7 @@ typedef struct {
     token_t  cur;
     int      yield_ok;    /* WAIT許可フラグ（MAIN/INITコンパイル中か, §7, v0.3.4） */
     int      nest;        /* IFYESネスト深さ（§7） */
+    int      repeat_depth;/* REPEATループのネスト深さ（WAIT禁止・ITR有効判定, §7 v0.4.4） */
     int      open_line;   /* 直近に開いたブロック/IFYESのヘッダ行（END欠落の aux 用, v0.3.7） */
     jmp_buf  jb;
 } parser_t;
@@ -55,7 +56,7 @@ static int is_reserved_name(const char *n)
     static const char *const kw[] = {
         "RESULT","SRESULT","GVAR","VAR","ARG","SGVAR","SVAR","SARG",
         "none","IFYES","WAIT","TIMER","CLEAR_ERR","NOT","AND","OR",
-        "INIT","MAIN","ON","END","ELSE","EXIT", 0
+        "INIT","MAIN","ON","END","ELSE","EXIT","REPEAT","ITR", 0
     };
     int i;
     for (i = 0; kw[i]; i++) if (strcmp(n, kw[i]) == 0) return 1;
@@ -162,6 +163,7 @@ static int read_index(int limit, const char *slot)
 #define TY_STR 1
 static int g_type;        /* parse_primary 等が設定 */
 static int g_first_type;  /* 直近の expr_list の先頭要素の型 */
+static int g_last_type;   /* 直近の expr_list の末尾要素の型（動的添字ライトの値型チェック用, v0.4.4） */
 static int g_str_reads;   /* この expr_list 中の str産出ポート読みの数（単一SRESULT衝突回避, v0.3.8） */
 
 static void need_int(int line)
@@ -194,6 +196,10 @@ static void parse_primary(void)
         strcpy(name, P.cur.text);
 
         if (!strcmp(name, "RESULT")) { adv(); emit8(OP_LOAD_RESULT); return; }
+        if (!strcmp(name, "ITR")) {   /* 反復カウンタ（REPEAT 内だけ有効・int, §7 v0.4.4） */
+            if (P.repeat_depth <= 0) fail(line, ERR_SYNTAX);
+            adv(); emit8(OP_LOAD_ITR); return;
+        }
         if (!strcmp(name, "GVAR")) { adv(); { int i = read_index(CFG_GVAR_COUNT, "GVAR"); emit8(OP_LOAD_GVAR); emit8(i); } return; }
         if (!strcmp(name, "VAR"))  { adv(); { int i = read_index(CFG_VAR_COUNT,  "VAR");  emit8(OP_LOAD_VAR);  emit8(i); } return; }
         if (!strcmp(name, "ARG"))  { adv(); { int i = read_index(CFG_ARG_COUNT,  "ARG");  emit8(OP_LOAD_ARG);  emit8(i); } return; }
@@ -373,9 +379,10 @@ static int parse_expr_list(void)
 {
     int n, line = P.cur.line;
     g_str_reads = 0;   /* このリストでの str産出ポート読みを数える（単一SRESULT衝突回避） */
-    if (is_kw("none")) { adv(); g_first_type = TY_INT; return 0; }
+    if (is_kw("none")) { adv(); g_first_type = g_last_type = TY_INT; return 0; }
     parse_expr(); n = 1; g_first_type = g_type;
     while (P.cur.type == T_COMMA) { adv(); parse_expr(); n++; }
+    g_last_type = g_type;   /* 末尾要素の型（動的添字ライトの値型, v0.4.4） */
     /* str産出ポートの“読み”は1リストに1個まで。産んだ文字列は共有 SRESULT 1本に乗るため、
      * 2個読むと後の読みが前を上書きする（§4）。複数欲しいときは一旦 SVAR 等へ退避（純パイプは到達しない）。
      * 自動退避は将来ノブ。リテラル/スロット/SARG は各自実体を持つので制限なし。 */
@@ -425,6 +432,60 @@ static void parse_if(int argc, int line)
     expect_newline();
 }
 
+/* 裸のスロット名（添字なし）＝動的添字アクセスのターゲット判定（§4, v0.4.4）。該当で1を返し
+ * *islot=ISLOT_*、*etype=TY_INT/TY_STR、*writable(ARG/SARGは0=受信専用) を設定。 */
+static int slot_target(const char *name, int *islot, int *etype, int *writable)
+{
+    if (!strcmp(name, "VAR"))   { *islot = ISLOT_VAR;   *etype = TY_INT; *writable = 1; return 1; }
+    if (!strcmp(name, "GVAR"))  { *islot = ISLOT_GVAR;  *etype = TY_INT; *writable = 1; return 1; }
+    if (!strcmp(name, "ARG"))   { *islot = ISLOT_ARG;   *etype = TY_INT; *writable = 0; return 1; }
+    if (!strcmp(name, "SVAR"))  { *islot = ISLOT_SVAR;  *etype = TY_STR; *writable = 1; return 1; }
+    if (!strcmp(name, "SGVAR")) { *islot = ISLOT_SGVAR; *etype = TY_STR; *writable = 1; return 1; }
+    if (!strcmp(name, "SARG"))  { *islot = ISLOT_SARG;  *etype = TY_STR; *writable = 0; return 1; }
+    return 0;
+}
+
+/* 動的添字アクセスの1段を吐く（§4, v0.4.4）。argc>=2=write / ==1=read。第1引数=添字(int必須)。
+ * write の値(g_last_type)はスロット要素型と一致必須。ARG/SARG への write は ERR_BAD_POSITION。
+ * is_chain なら産出値(RESULT/SRESULT)を次段の暗黙左辺へ push する。 */
+static void emit_index_stage(int islot, int etype, int writable, int argc, int is_chain, int line, const char *name)
+{
+    if (g_first_type != TY_INT) fail(line, ERR_TYPE_MISMATCH);            /* 添字は int */
+    if (argc >= 2) {                                                      /* write */
+        if (!writable)            fail_tok(line, ERR_BAD_POSITION, name); /* ARG/SARG は受信専用 */
+        if (g_last_type != etype) fail(line, ERR_TYPE_MISMATCH);          /* 書く値の型 */
+    }
+    emit8(OP_INDEX); emit8(islot); emit8(argc);
+    if (is_chain) {
+        if (etype == TY_STR) { emit8(OP_LOAD_SRESULT); g_first_type = TY_STR; }
+        else                 { emit8(OP_LOAD_RESULT);  g_first_type = TY_INT; }
+    }
+}
+
+/* <N> -> REPEAT … END（有界ループ, §7 v0.4.4）。N は push 済み(argc個)＝正規化して1値に。
+ * 本体内で WAIT は禁止（ERR_WAIT_IN_LOOP＝within-tick）。ネストは CFG_LOOP_NEST 段まで。
+ * バイトコード:  <N> REPEAT_INIT L_END / L_TOP: <body> REPEAT_NEXT L_TOP / L_END:  */
+static void parse_repeat(int argc, int line)
+{
+    int endsite, top;
+    int save_open = P.open_line;
+    P.open_line = line;
+    if (P.repeat_depth >= CFG_LOOP_NEST) fail(line, ERR_NEST_TOO_DEEP);   /* ループネスト上限 */
+    P.repeat_depth++;
+    normalize_to_one(argc);                 /* N を1値に */
+    expect_newline();
+    endsite = emit_jump(OP_REPEAT_INIT);     /* pop N; N<=0 → endsite。else フレーム(iter=1,limit=N) */
+    top = here();
+    parse_stmt_list();                       /* 本体（END で停止） */
+    if (!is_kw("END")) fail_end(P.cur.line, line);
+    adv();
+    emit8(OP_REPEAT_NEXT); emit8(top & 0xFF); emit8((top >> 8) & 0xFF);   /* 後退辺（top へ） */
+    patch(endsite, here());                  /* N<=0 / バジェット打ち切りの落ち先＝ループ後 */
+    P.repeat_depth--;
+    P.open_line = save_open;
+    expect_newline();
+}
+
 static void parse_stmt(void)
 {
     int line = P.cur.line;
@@ -453,6 +514,15 @@ static void parse_stmt(void)
      * 「前段を呼ぶ → その産出値(int=RESULT/str=SRESULT)を次段の暗黙左辺へ1個LOAD」を繰り返し、
      * '->' で続かないセグメント（＝終端）で下の既存処理に合流する。純コンパイル時糖衣＝新opなし。 */
     while (P.cur.type == T_ARROW) {
+        int islot, etype, writ;
+        if (slot_target(tname, &islot, &etype, &writ)) {   /* 裸のスロット＝動的添字（中間段, §4 v0.4.4） */
+            emit_index_stage(islot, etype, writ, argc, /*is_chain=*/1, line, tname);
+            argc = 1;                                       /* 継ぎ目は単一値（産出をLOAD済み） */
+            adv();                                          /* '->' を消費 */
+            if (P.cur.type != T_IDENT) fail(P.cur.line, ERR_SYNTAX);
+            strcpy(tname, P.cur.text); adv();
+            continue;
+        }
         pi = vm_find_port(tname);
         if (pi < 0) fail_tok(line, ERR_UNKNOWN_PORT, tname);
         if (vm()->ports[pi].kind != PK_INOUT)
@@ -468,13 +538,30 @@ static void parse_stmt(void)
     }
 
     /* ---- 終端段（tname）---- */
+
+    /* 動的添字アクセス（裸のスロット名・添字なし）: N -> SLOT / idx,val -> SLOT（§4, v0.4.4）。
+     * 括弧付き SLOT[k]（次トークンが '['）は下の定数添字処理へ回す。 */
+    {
+        int islot, etype, writ;
+        if (slot_target(tname, &islot, &etype, &writ) && P.cur.type != T_LBRACKET) {
+            emit_index_stage(islot, etype, writ, argc, /*is_chain=*/0, line, tname);
+            end_stmt(line);
+            return;
+        }
+    }
+
     /* 制御ポート（被送信値は int） */
     if (!strcmp(tname, "IFYES")) {
         if (g_first_type != TY_INT) fail(line, ERR_TYPE_MISMATCH);   /* 条件は int（文字列はEQUALS） */
         parse_if(argc, line); return;
     }
+    if (!strcmp(tname, "REPEAT")) {                                  /* <N> -> REPEAT … END（有界ループ, §7 v0.4.4） */
+        if (g_first_type != TY_INT) fail(line, ERR_TYPE_MISMATCH);   /* N は int */
+        parse_repeat(argc, line); return;
+    }
     if (!strcmp(tname, "WAIT")) {
         if (!P.yield_ok) fail(line, ERR_WAIT_IN_ON);                 /* ON内のWAIT（§7） */
+        if (P.repeat_depth > 0) fail(line, ERR_WAIT_IN_LOOP);        /* REPEAT内のWAIT（§7 v0.4.4・within-tick） */
         if (g_first_type != TY_INT) fail(line, ERR_TYPE_MISMATCH);
         normalize_to_one(argc); emit8(OP_YIELD); expect_newline(); return;
     }
@@ -567,6 +654,7 @@ static void parse_simple_block(block_kind_t kind)
     bi = add_block(kind);
     P.yield_ok = (kind == BLK_MAIN || kind == BLK_INIT);  /* WAITはMAIN/INITで可（v0.3.4） */
     P.nest = 0;
+    P.repeat_depth = 0;
     parse_stmt_list();
     if (!is_kw("END")) fail_end(P.cur.line, P.open_line);  /* aux=このブロックの開きヘッダ行 */
     adv();
@@ -611,6 +699,7 @@ static void parse_on_block(void)
         vm()->blocks[bi].handler_port = handler;
         P.yield_ok = 0;   /* ON ハンドラは WAIT 禁止 */
         P.nest = 0;
+        P.repeat_depth = 0;
         parse_stmt_list();
         if (!is_kw("END")) fail_end(P.cur.line, P.open_line);  /* aux=ONの開きヘッダ行 */
         adv();
@@ -705,6 +794,7 @@ static void reset_program(void)
     memset(m->sresult, 0, sizeof(m->sresult));
     m->status = 0;
     m->sp = 0;
+    m->loop_sp = 0;   /* ループフレーム（§7 REPEAT, v0.4.4） */
     memset(&m->main_ctx, 0, sizeof(m->main_ctx));
     m->loaded = false;
     m->init_done = false;
