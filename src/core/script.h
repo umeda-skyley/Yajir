@@ -24,7 +24,7 @@
 
 /* Yajir 言語/実装バージョン。スクリプトからは入力ポート VERSION（str産出）で、
  * ホストからは script_version() で読める（§11, v0.4）。 */
-#define SCRIPT_VERSION "0.4.4"
+#define SCRIPT_VERSION "0.4.5"
 
 /* 出力ポートが受け取る値（型タグ付き）。SV_INTは数値、SV_STRは script_str()で文字列に
  * 解決して出力する（v0.4.2でCHARタグ撤去＝値は int/str の2択・§9。数を文字グリフで出すのは
@@ -54,6 +54,9 @@ void script_register_in   (const char *name, script_in_fn fn, script_type_t out_
  * 物理inout(LED1等)は get_fn で読める。関数ポート(FORMATTER等)は get_fn=NULL（読み不可・送信専用）。 */
 void script_register_inout(const char *name, script_in_fn get_fn, script_out_fn set_fn, script_type_t out_type);
 void script_register_handler(const char *name);   /* ハンドラ源・産出none（§3, §10） */
+/* script: スクリプト内ポート（def_port）。本体は PORT ブロック（コンパイラが bc_start を後埋め）。
+ * inout 同格・産出型必須・両辺可でチェイン可（§3, §7, v0.4.5）。 */
+void script_register_script_port(const char *name, script_type_t out_type);
 
 /* --- 関数ポートthunkから戻り値をRESULTへ（§4, §11） --- */
 void script_set_result(int32_t v);
@@ -111,7 +114,8 @@ typedef enum {
     ERR_BAD_SLOT_INDEX,  /* 添字が定数でない/範囲外（§4, §12） */
     ERR_NEST_TOO_DEEP,   /* ネスト上限超過（§12） */
     ERR_BAD_POSITION,    /* ポート向き違反: in を右辺 / out を左辺 / 産出noneを中間（§3, v0.3.8） */
-    ERR_TOO_MANY_PORTS,  /* スクリプト def_handler でポート表が満杯（§3, v0.4.1） */
+    ERR_TOO_MANY_PORTS,  /* スクリプト def_handler/def_port でポート表が満杯（§3, v0.4.1/v0.4.5） */
+    ERR_RECURSION,       /* スクリプト内ポートの再帰サイクル（§3, v0.4.5・load時DFS）。tok=サイクル上のポート名 */
     ERR_SYNTAX           /* 上記に当てはまらない構文崩れ（受け皿） */
 } script_err_t;
 

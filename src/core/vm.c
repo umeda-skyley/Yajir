@@ -129,9 +129,10 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
         uint8_t  op;
 
         if (*budget <= 0) {
-            /* ループ内では命令の途中で切らない（式評価中に sp を失うと壊れる）。バジェット切れは
-             * REPEAT の後退辺 OP_REPEAT_NEXT が文境界（sp=ベースライン）で打ち切る（§7, v0.4.4）。 */
-            if (m->loop_sp == 0) { *pc = p; return EXEC_BUDGET; }
+            /* ループ内・スクリプト内ポート呼び出し中は命令の途中で切らない（式評価中に sp を失うと壊れる）。
+             * REPEAT の後退辺 OP_REPEAT_NEXT が文境界で打ち切る（§7, v0.4.4）。ポート呼びは within-tick で
+             * 完走させる（call_sp==0 まで戻ってから中断判定, §7 v0.4.5）。 */
+            if (m->loop_sp == 0 && m->call_sp == 0) { *pc = p; return EXEC_BUDGET; }
         }
         (*budget)--;
 
@@ -140,6 +141,15 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
 
         switch (op) {
         case OP_HALT:
+            /* スクリプト内ポート本体からの HALT は呼び出し元へ return（§7, v0.4.5）。
+             * call_sp>0 なら ARG/SARG を復帰し ret_pc へ戻る。call_sp==0 は従来のブロック完了。 */
+            if (m->call_sp > 0) {
+                call_frame_t *f = &m->callstack[--m->call_sp];
+                memcpy(m->arg,  f->save_arg,  sizeof(m->arg));
+                memcpy(m->sarg, f->save_sarg, sizeof(m->sarg));
+                p = f->ret_pc;
+                break;
+            }
             *pc = p;
             return EXEC_DONE;
 
@@ -436,6 +446,56 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
             m->sp = base;
             break;
         }
+
+        /* ---- スクリプト内ポート呼び出し（サブルーチン, §3 §7, v0.4.5） ---- */
+        case OP_CALL_SCRIPT: {
+            uint8_t pi   = code[p++];
+            uint8_t argc = code[p++];
+            int base = m->sp - argc;
+            call_frame_t *f;
+            int k;
+            uint16_t body = m->ports[pi].bc_start;
+            if (base < 0) { *pc = ip; return EXEC_ERROR; }
+            if (m->call_sp >= CFG_CALL_NEST)  { *pc = ip; return EXEC_ERROR; } /* 静的に到達不能・防御 */
+            if (body >= m->code_len)          { *pc = ip; return EXEC_ERROR; } /* 本体未定義/範囲外・防御 */
+            /* caller の ARG/SARG を退避（仮引数スコープ）。VAR/SVAR は共有ゆえ退避しない。 */
+            f = &m->callstack[m->call_sp++];
+            f->ret_pc = p;
+            memcpy(f->save_arg,  m->arg,  sizeof(m->arg));
+            memcpy(f->save_sarg, m->sarg, sizeof(m->sarg));
+            /* 引数で ARG/SARG を作る。まず 0/空にクリア（不足位置は benign） */
+            for (k = 0; k < CFG_ARG_COUNT; k++)  m->arg[k] = val_int(0);
+            for (k = 0; k < CFG_SARG_COUNT; k++) m->sarg[k][0] = '\0';
+            for (k = 0; k < argc && k < CFG_ARG_COUNT; k++) {
+                value_t v = m->stack[base + k];
+                if (val_is_str(v)) {                         /* str 位置 → SARG[k]（int ビューは 0 のまま） */
+                    const char *s;
+                    if (v.tag == SV_SREF && ((v.i >> 8) & 0xFF) == SSLOT_SARG) {
+                        int si = v.i & 0xFF;                 /* SARG 参照は退避元から解決（充填で自壊するのを回避） */
+                        s = (si >= 0 && si < CFG_SARG_COUNT) ? f->save_sarg[si] : "";
+                    } else {
+                        s = vm_resolve_str(v);               /* リテラル/SVAR/SGVAR/SRESULT は充填の影響を受けない */
+                    }
+                    if (k < CFG_SARG_COUNT) {
+                        size_t n = strlen(s);
+                        if (n >= CFG_SARG_LEN) { n = CFG_SARG_LEN - 1; vm_set_err(ERR_STR_TRUNC); }
+                        memcpy(m->sarg[k], s, n);
+                        m->sarg[k][n] = '\0';
+                    } else {
+                        vm_set_err(ERR_STR_TRUNC);           /* N_SARG 超の str 位置は落とす */
+                    }
+                } else {
+                    m->arg[k] = v;                           /* int 位置 */
+                }
+            }
+            m->sp = base;                                    /* 引数を消費 */
+            p = body;                                        /* 本体へジャンプ */
+            break;
+        }
+        case OP_STORE_RESULT:                                /* 値付き EXIT の int 戻り（pop → RESULT） */
+            if (m->sp < 1) { *pc = ip; return EXEC_ERROR; }
+            m->result = m->stack[--m->sp];
+            break;
 
         default:
             *pc = ip;

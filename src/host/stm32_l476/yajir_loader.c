@@ -30,6 +30,8 @@ static void put_dec(int32_t v)
 static void banner(void)
 {
     yajir_puts("\r\n==== Yajir on Nucleo-L476RG ====\r\n");
+    yajir_puts("Version:"); yajir_puts(script_version()); yajir_puts("\r\n");
+    yajir_puts("Arena size:"); put_dec( sizeof(g_arena) ); yajir_puts("\r\n");
     yajir_puts("paste your script, then a line:  @run\r\n");
     yajir_puts("(reset the board to load again)\r\n> ");
 }

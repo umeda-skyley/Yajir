@@ -143,6 +143,11 @@ void script_register_handler(const char *name)
 {
     add_port(name, PK_HANDLER);
 }
+void script_register_script_port(const char *name, script_type_t out_type)
+{
+    port_t *pt = add_port(name, PK_SCRIPT);
+    if (pt) { pt->out_type = out_type; pt->bc_start = 0xFFFF; }   /* 本体未定義マーカ（PORTブロックで後埋め） */
+}
 
 /* ---- RESULT（§4） ---- */
 void script_set_result(int32_t v)

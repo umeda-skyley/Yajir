@@ -24,6 +24,8 @@ typedef struct {
     int      yield_ok;    /* WAIT許可フラグ（MAIN/INITコンパイル中か, §7, v0.3.4） */
     int      nest;        /* IFYESネスト深さ（§7） */
     int      repeat_depth;/* REPEATループのネスト深さ（WAIT禁止・ITR有効判定, §7 v0.4.4） */
+    int      cur_port_type;/* コンパイル中のスクリプト内ポートの産出型 TY_INT/TY_STR、-1=非ポート（§7 v0.4.5・EXIT型検査） */
+    int      cur_port_sidx;/* 同・script-port index（DAG辺記録用）、-1=非ポート（v0.4.5） */
     int      open_line;   /* 直近に開いたブロック/IFYESのヘッダ行（END欠落の aux 用, v0.3.7） */
     jmp_buf  jb;
 } parser_t;
@@ -43,6 +45,33 @@ typedef struct {
 static alias_t s_aliases[CFG_MAX_ALIAS];
 static int     s_nalias;
 
+/* ---- スクリプト内ポート（def_port）の呼び出しグラフ（§3, v0.4.5） ----
+ * コンパイル時のみの揮発状態。sidx（0..s_nscript_ports-1）を圧縮索引に使い、辺はビットセット
+ * （callee sidx のビット）で持つ。ロード末尾に DFS でサイクル検出＋最長路（最大コールスタック段数）。 */
+static int      s_script_ports[CFG_MAX_SCRIPT_PORTS];  /* sidx -> ポート表インデックス */
+static uint32_t s_call_edges  [CFG_MAX_SCRIPT_PORTS];  /* sidx -> callee sidx のビットセット */
+static int      s_nscript_ports;
+static int      s_dfs_color   [CFG_MAX_SCRIPT_PORTS];  /* 0=white,1=gray,2=black */
+static int      s_dfs_memo    [CFG_MAX_SCRIPT_PORTS];  /* 最長路メモ */
+static int      s_cycle_pi;                            /* サイクル上のポート表インデックス（tok用） */
+
+static int script_sidx_of(int pi)   /* ポート表index -> sidx（無ければ -1） */
+{
+    int i;
+    for (i = 0; i < s_nscript_ports; i++) if (s_script_ports[i] == pi) return i;
+    return -1;
+}
+
+/* PORT 本体をコンパイル中（P.cur_port_sidx>=0）に別のスクリプト内ポートを呼んだら、呼び出しグラフに
+ * 辺を1本足す（DAG判定用, §3 v0.4.5）。本体外（INIT/MAIN/ON）からの呼びは根＝辺にしない。 */
+static void record_call_edge(int callee_pi)
+{
+    int cs;
+    if (P.cur_port_sidx < 0) return;
+    cs = script_sidx_of(callee_pi);
+    if (cs >= 0) s_call_edges[P.cur_port_sidx] |= (1u << cs);
+}
+
 static const alias_t *alias_find(const char *name)
 {
     int i;
@@ -56,7 +85,7 @@ static int is_reserved_name(const char *n)
     static const char *const kw[] = {
         "RESULT","SRESULT","GVAR","VAR","ARG","SGVAR","SVAR","SARG",
         "none","IFYES","WAIT","TIMER","CLEAR_ERR","NOT","AND","OR",
-        "INIT","MAIN","ON","END","ELSE","EXIT","REPEAT","ITR", 0
+        "INIT","MAIN","ON","END","ELSE","EXIT","REPEAT","ITR","PORT", 0
     };
     int i;
     for (i = 0; kw[i]; i++) if (strcmp(n, kw[i]) == 0) return 1;
@@ -172,6 +201,16 @@ static void need_int(int line)
         fail(line, ERR_TYPE_MISMATCH);   /* 式中で文字列（算術/比較は int, 文字列は EQUALS） */
 }
 
+/* 単独 EXIT / PORT本体フォールスルーの「戻り型のデフォルト値を産出して HALT」（§7, v0.4.5）。
+ * str は SRESULT="" （int 0 を OP_STORE_SSTR に渡すと vm_resolve_str が "" を返す）、int/handler は RESULT=0。 */
+static void emit_exit_default(int type)
+{
+    emit8(OP_PUSH_INT); emit_i32(0);
+    if (type == TY_STR) { emit8(OP_STORE_SSTR); emit8(SSLOT_SRESULT); emit8(0); }
+    else                { emit8(OP_STORE_RESULT); }
+    emit8(OP_HALT);
+}
+
 static void parse_primary(void)
 {
     int line = P.cur.line;
@@ -240,6 +279,15 @@ static void parse_primary(void)
                 emit8(OP_POP); emit8(OP_LOAD_SRESULT);
                 g_type = TY_STR;
                 g_str_reads++;   /* 単一SRESULT: 1リストに str源読みは1個まで（parse_expr_list で検査） */
+            }
+            return;
+        case PK_SCRIPT:   /* スクリプト内ポートを値源として読む＝引数0で同期呼び（ARG全0, §3 v0.4.5） */
+            emit8(OP_CALL_SCRIPT); emit8(pi); emit8(0);
+            record_call_edge(pi);
+            if (vm()->ports[pi].out_type == SCRIPT_T_STR) {
+                emit8(OP_LOAD_SRESULT); g_type = TY_STR; g_str_reads++;   /* 単一SRESULT: 1リスト1個まで */
+            } else {
+                emit8(OP_LOAD_RESULT);  g_type = TY_INT;
             }
             return;
         case PK_OUT:     fail_tok(line, ERR_BAD_POSITION, name);   /* out は左辺に立てられない（産出none・値源でない） */
@@ -492,14 +540,15 @@ static void parse_stmt(void)
     char tname[CFG_MAX_NAME];
     int argc, pi;
 
-    /* EXIT: ON ハンドラを即終了（早期リターン, v0.4.2）。END/ELSE と同じ裸の制御語。
-     * 実装は「その場で OP_HALT を吐く」だけ＝VMの EXEC_DONE でハンドラが即完了する。
-     * IFYES の内側からでもハンドラ全体を抜ける（C の return 相当）。INIT/MAIN では構文エラー
-     * （yield_ok が立つ＝MAIN/INIT。WAIT の "ON専用" 判定のちょうど逆）。 */
+    /* 単独 EXIT: 「戻り型のデフォルト値を返して抜ける」略記（§7 v0.4.5・後方互換）。
+     * ハンドラ/T_INTポートは 0->EXIT、T_STRポートは ""->EXIT と同義＝END到達フォールスルーと同一。
+     * IFYES の内側からでもブロック全体を抜ける（C の return 相当）。INIT/MAIN では構文エラー
+     * （yield_ok が立つ＝MAIN/INIT。WAIT の "ON/PORT専用" 判定のちょうど逆）。
+     * 値付き `値 -> EXIT` は下の終端段（tname=="EXIT"）で扱う。 */
     if (is_kw("EXIT")) {
         if (P.yield_ok) fail(line, ERR_SYNTAX);
         adv();
-        emit8(OP_HALT);
+        emit_exit_default(P.cur_port_type < 0 ? TY_INT : P.cur_port_type);
         expect_newline();
         return;
     }
@@ -525,9 +574,14 @@ static void parse_stmt(void)
         }
         pi = vm_find_port(tname);
         if (pi < 0) fail_tok(line, ERR_UNKNOWN_PORT, tname);
-        if (vm()->ports[pi].kind != PK_INOUT)
+        if (vm()->ports[pi].kind == PK_SCRIPT) {        /* スクリプト内ポート＝中間段OK（inout同格, §3 v0.4.5） */
+            emit8(OP_CALL_SCRIPT); emit8(pi); emit8(argc);
+            record_call_edge(pi);
+        } else if (vm()->ports[pi].kind == PK_INOUT) {
+            emit8(OP_CALL_OUT); emit8(pi); emit8(argc); /* 前段を呼ぶ（先頭はargc, 継ぎ目以降は1） */
+        } else {
             fail_tok(line, ERR_BAD_POSITION, tname);    /* out/handler/in/const を中間に置けない */
-        emit8(OP_CALL_OUT); emit8(pi); emit8(argc);     /* 前段を呼ぶ（先頭はargc, 継ぎ目以降は1） */
+        }
         if (vm()->ports[pi].out_type == SCRIPT_T_STR) { emit8(OP_LOAD_SRESULT); g_first_type = TY_STR; }
         else                                          { emit8(OP_LOAD_RESULT);  g_first_type = TY_INT; }
         argc = 1;                                       /* 継ぎ目は常に単一値（純パイプ・§5） */
@@ -568,6 +622,20 @@ static void parse_stmt(void)
     if (!strcmp(tname, "TIMER")) {
         if (g_first_type != TY_INT) fail(line, ERR_TYPE_MISMATCH);
         normalize_to_one(argc); emit8(OP_ARM_TIMER); expect_newline(); return;
+    }
+    if (!strcmp(tname, "EXIT")) {   /* 値付きリターン `値 -> EXIT`（§7 v0.4.5） */
+        if (P.yield_ok) fail(line, ERR_SYNTAX);            /* INIT/MAIN 不可 */
+        normalize_to_one(argc);                            /* 最左1値を残す */
+        if (P.cur_port_type < 0) {                         /* ハンドラ: 値を捨てて早期リターン */
+            emit8(OP_POP); emit8(OP_HALT);
+        } else if (P.cur_port_type == TY_STR) {            /* str ポート: 値(str)を SRESULT へ */
+            if (g_first_type != TY_STR) fail(line, ERR_TYPE_MISMATCH);
+            emit8(OP_STORE_SSTR); emit8(SSLOT_SRESULT); emit8(0); emit8(OP_HALT);
+        } else {                                           /* int ポート: 値(int)を RESULT へ */
+            if (g_first_type != TY_INT) fail(line, ERR_TYPE_MISMATCH);
+            emit8(OP_STORE_RESULT); emit8(OP_HALT);
+        }
+        expect_newline(); return;
     }
     /* 注: HANDLER はもう特殊分岐ではない。組込みの予約ハンドラ源チャネル（script_init で
      *     register 済み）として、下のポート検索→PK_HANDLER→OP_POST_HANDLER 経路を通る。 */
@@ -629,6 +697,7 @@ static void parse_stmt(void)
     switch (vm()->ports[pi].kind) {
     case PK_OUT:
     case PK_INOUT: emit8(OP_CALL_OUT); emit8(pi); emit8(argc); break;
+    case PK_SCRIPT: emit8(OP_CALL_SCRIPT); emit8(pi); emit8(argc); record_call_edge(pi); break;  /* サブルーチン呼び・戻り値は捨てる（§3 v0.4.5） */
     case PK_HANDLER:   emit8(OP_POST_HANDLER); emit8(pi); emit8(argc); break;  /* 名前付きHANDLER（スクリプトから自己/相互post, v0.3.7+） */
     case PK_IN:    fail_tok(line, ERR_BAD_POSITION, tname);   /* in は右辺に立てられない（値源・受信不可, §3） */
     case PK_CONST: fail_tok(line, ERR_BAD_POSITION, tname);   /* const は右辺に立てられない（値源） */
@@ -655,6 +724,7 @@ static void parse_simple_block(block_kind_t kind)
     P.yield_ok = (kind == BLK_MAIN || kind == BLK_INIT);  /* WAITはMAIN/INITで可（v0.3.4） */
     P.nest = 0;
     P.repeat_depth = 0;
+    P.cur_port_type = -1; P.cur_port_sidx = -1;   /* スクリプト内ポート本体ではない（v0.4.5） */
     parse_stmt_list();
     if (!is_kw("END")) fail_end(P.cur.line, P.open_line);  /* aux=このブロックの開きヘッダ行 */
     adv();
@@ -700,6 +770,7 @@ static void parse_on_block(void)
         P.yield_ok = 0;   /* ON ハンドラは WAIT 禁止 */
         P.nest = 0;
         P.repeat_depth = 0;
+        P.cur_port_type = -1; P.cur_port_sidx = -1;   /* ハンドラ本体（スクリプト内ポートではない, v0.4.5） */
         parse_stmt_list();
         if (!is_kw("END")) fail_end(P.cur.line, P.open_line);  /* aux=ONの開きヘッダ行 */
         adv();
@@ -771,6 +842,93 @@ static void parse_def_handler(void)
     if (vm_find_port(name) < 0) fail_tok(line, ERR_TOO_MANY_PORTS, name);
 }
 
+/* def_port(NAME, T_INT|T_STR) を解析してスクリプト内ポートを登録（v0.4.5）。本体は PORT ブロック
+ * （後で bc_start を後埋め）。def_alias/def_handler に続きコンパイラが解釈する3つ目の def_。
+ * 宣言は冒頭一括・使用/本体より前。sidx 表にも積んで呼び出しグラフ判定（DFS）の対象にする。 */
+static void parse_def_port(void)
+{
+    char name[CFG_MAX_NAME];
+    int line = P.cur.line, pi;
+    script_type_t ot;
+    adv();                                  /* "def_port" を消費 */
+    expect(T_LPAREN, "'('");
+    if (P.cur.type != T_IDENT) fail(P.cur.line, ERR_SYNTAX);
+    strncpy(name, P.cur.text, CFG_MAX_NAME - 1); name[CFG_MAX_NAME - 1] = '\0';
+    adv();
+    expect(T_COMMA, "','");
+    if      (is_kw("T_INT")) ot = SCRIPT_T_INT;
+    else if (is_kw("T_STR")) ot = SCRIPT_T_STR;
+    else { fail(P.cur.line, ERR_SYNTAX); return; }   /* 産出型は T_INT / T_STR のみ */
+    adv();
+    expect(T_RPAREN, "')'");
+    expect_newline();
+
+    /* 衝突: 予約語・スロット名・別名は不可。既登録の非scriptポートとの同名も不可（§3）。
+     * 既登録の PK_SCRIPT との同名は冪等（再宣言OK＝本体は毎ロード PORT ブロックで張り直す。
+     * ポート表はロード間で残るため、再ロードでの再宣言を許す必要がある）。 */
+    if (is_reserved_name(name) || alias_find(name)) fail_tok(line, ERR_SYNTAX, name);
+    pi = vm_find_port(name);
+    if (pi >= 0 && vm()->ports[pi].kind != PK_SCRIPT) fail_tok(line, ERR_SYNTAX, name);
+    if (pi >= 0 && script_sidx_of(pi) >= 0) fail_tok(line, ERR_SYNTAX, name);  /* 同一スクリプト内の二重宣言 */
+    if (s_nscript_ports >= CFG_MAX_SCRIPT_PORTS) fail_tok(line, ERR_TOO_MANY_PORTS, name);
+    script_register_script_port(name, ot);            /* 既存なら上書き再束縛・bc_start=0xFFFF（本体未定義） */
+    pi = vm_find_port(name);
+    if (pi < 0) fail_tok(line, ERR_TOO_MANY_PORTS, name);  /* ポート表満杯 */
+    s_script_ports[s_nscript_ports] = pi;
+    s_call_edges[s_nscript_ports]   = 0;
+    s_nscript_ports++;
+}
+
+/* PORT NAME … END（スクリプト内ポート本体, v0.4.5）。NAME は def_port 済みで本体未定義であること。
+ * bc_start をここで確定し、本体を yield不可（WAIT=ERR_WAIT_IN_ON）でコンパイル。EXIT の型検査に
+ * cur_port_type、呼び出しグラフの辺記録に cur_port_sidx を張る。フォールスルーで既定値を産出。 */
+static void parse_port_block(void)
+{
+    char name[CFG_MAX_NAME];
+    int line = P.open_line, pi, sidx;
+    if (P.cur.type != T_IDENT) fail(P.cur.line, ERR_SYNTAX);
+    strncpy(name, P.cur.text, CFG_MAX_NAME - 1); name[CFG_MAX_NAME - 1] = '\0';
+    adv();
+    pi = vm_find_port(name);
+    if (pi < 0 || vm()->ports[pi].kind != PK_SCRIPT) fail_tok(line, ERR_SYNTAX, name);  /* def_port 宣言が無い */
+    if (vm()->ports[pi].bc_start != 0xFFFF)          fail_tok(line, ERR_SYNTAX, name);  /* 本体二重定義 */
+    sidx = script_sidx_of(pi);
+    expect_newline();
+    vm()->ports[pi].bc_start = (uint16_t)here();      /* 本体開始を確定（前方参照はこの番号で解決） */
+    P.yield_ok = 0;             /* WAIT 不可（ERR_WAIT_IN_ON・within-tick） */
+    P.nest = 0;
+    P.repeat_depth = 0;
+    P.cur_port_type = (vm()->ports[pi].out_type == SCRIPT_T_STR) ? TY_STR : TY_INT;
+    P.cur_port_sidx = sidx;
+    parse_stmt_list();
+    if (!is_kw("END")) fail_end(P.cur.line, P.open_line);
+    adv();
+    emit_exit_default(P.cur_port_type);   /* EXIT されず END 到達＝既定値(0/空)を産出して return */
+    P.cur_port_type = -1;
+    P.cur_port_sidx = -1;
+    expect_newline();
+}
+
+/* 呼び出しグラフの DFS（§3 v0.4.5）。gray-node のバックエッジでサイクル検出、同時に
+ * depth[node]=1+max(depth[子]) で最長路＝最大コールスタック段数を算出。戻り値<0＝サイクル。 */
+static int dfs_depth(int sidx)
+{
+    int j, best = 0;
+    if (s_dfs_color[sidx] == 1) { s_cycle_pi = s_script_ports[sidx]; return -1; }  /* バックエッジ */
+    if (s_dfs_color[sidx] == 2) return s_dfs_memo[sidx];
+    s_dfs_color[sidx] = 1;
+    for (j = 0; j < s_nscript_ports; j++) {
+        if (s_call_edges[sidx] & (1u << j)) {
+            int d = dfs_depth(j);
+            if (d < 0) { if (s_cycle_pi < 0) s_cycle_pi = s_script_ports[sidx]; return -1; }
+            if (d > best) best = d;
+        }
+    }
+    s_dfs_color[sidx] = 2;
+    s_dfs_memo[sidx]  = best + 1;
+    return best + 1;
+}
+
 /* プログラム状態をロード前にリセット（§4：GVAR/VAR 0クリア） */
 static void reset_program(void)
 {
@@ -795,6 +953,15 @@ static void reset_program(void)
     m->status = 0;
     m->sp = 0;
     m->loop_sp = 0;   /* ループフレーム（§7 REPEAT, v0.4.4） */
+    m->call_sp = 0;   /* コールフレーム（§3 §7 スクリプト内ポート, v0.4.5） */
+    /* スクリプト内ポートの本体は毎ロードで再定義（前ロードの bc_start を無効化＝未定義に戻す）。
+     * ポート表自体は残るが、本体は PORT ブロックで張り直す。呼び出しグラフ表も総入れ替え。 */
+    {
+        int i;
+        for (i = 0; i < m->nports; i++)
+            if (m->ports[i].kind == PK_SCRIPT) m->ports[i].bc_start = 0xFFFF;
+    }
+    s_nscript_ports = 0;
     memset(&m->main_ctx, 0, sizeof(m->main_ctx));
     m->loaded = false;
     m->init_done = false;
@@ -819,6 +986,7 @@ int compiler_compile(const char *src, size_t len)
 
     reset_program();
     memset(&P, 0, sizeof(P));
+    P.cur_port_type = -1; P.cur_port_sidx = -1;   /* 既定＝非ポート（memset の 0 は有効値なので明示, v0.4.5） */
     lex_init(&P.lx, src, len);
 
     if (setjmp(P.jb)) {                 /* エラー巻き戻し（s_error は fail_e が設定済み） */
@@ -834,11 +1002,29 @@ int compiler_compile(const char *src, size_t len)
 
         if (is_kw("def_alias"))   { parse_def_alias();   continue; }   /* コンパイラが解釈する def_（v0.3.8） */
         if (is_kw("def_handler")) { parse_def_handler(); continue; }   /* 同上・ハンドラ源宣言（v0.4.1） */
+        if (is_kw("def_port"))    { parse_def_port();    continue; }   /* 同上・スクリプト内ポート宣言（v0.4.5） */
         if (!strncmp(P.cur.text, "def_", 4)) { skip_def_line(); continue; }  /* 他の def_ は非解釈（写し） */
         if (is_kw("INIT")) { P.open_line = P.cur.line; adv(); parse_simple_block(BLK_INIT); }
         else if (is_kw("MAIN")) { P.open_line = P.cur.line; adv(); parse_simple_block(BLK_MAIN); }
         else if (is_kw("ON")) { P.open_line = P.cur.line; adv(); parse_on_block(); }
+        else if (is_kw("PORT")) { P.open_line = P.cur.line; adv(); parse_port_block(); }   /* スクリプト内ポート本体（v0.4.5） */
         else top_level_unexpected();
+    }
+
+    /* スクリプト内ポート: 本体存在チェック＋呼び出しグラフ判定（§3 v0.4.5・全ブロックのコンパイル後）。 */
+    {
+        int i, maxdepth = 0;
+        for (i = 0; i < s_nscript_ports; i++)
+            if (m->ports[s_script_ports[i]].bc_start == 0xFFFF)
+                fail_tok(0, ERR_SYNTAX, m->ports[s_script_ports[i]].name);  /* def_port 宣言のみ・本体なし */
+        for (i = 0; i < s_nscript_ports; i++) { s_dfs_color[i] = 0; s_dfs_memo[i] = 0; }
+        s_cycle_pi = -1;
+        for (i = 0; i < s_nscript_ports; i++) {
+            int d = dfs_depth(i);
+            if (d < 0) fail_tok(0, ERR_RECURSION, s_cycle_pi >= 0 ? m->ports[s_cycle_pi].name : "");
+            if (d > maxdepth) maxdepth = d;
+        }
+        if (maxdepth > CFG_CALL_NEST) fail(0, ERR_NEST_TOO_DEEP);   /* コールスタック段数の静的検算 */
     }
 
     /* 実行コンテキスト確定。ロード直後は INITフェーズに入る（v0.3.4）。

@@ -43,11 +43,20 @@ END
 
 // 周期実行：文字列分岐は EQUALS 経由（== は int 専用のまま, §3）
 ON 1000
-    "ON" -> SVAR[0]                                    // 設定値（実機ではUARTやスロットから）
-    "ON", SVAR[0] -> EQUALS                            // 一致=1 を RESULT へ
+    SGVAR[0] -> SVAR[0]                                   // 設定値（実機ではUARTやスロットから）
+    "BTN-UP", SVAR[0] -> EQUALS                            // 一致=1 を RESULT へ
     (RESULT) -> IFYES
         "[", NOW, "] switch is ON" -> STDOUT
     ELSE
         "[", NOW, "] switch is OFF" -> STDOUT
     END
+END
+
+ON RXDATA
+	ARG[0], " ", ARG[1], " ", SARG[2] -> STDOUT
+	SARG[2] -> SGVAR[0]
+END
+
+ON MYHANDLER
+	"My handler called." -> STDOUT
 END

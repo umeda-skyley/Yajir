@@ -26,16 +26,18 @@ typedef enum {
     PK_IN,     /* def_in    : 入力ポート（式中で読む）       */
     PK_INOUT,  /* def_inout : 物理。読み書き両対応           */
     PK_CONST,    /* def_const   : 名前付き整数定数             */
-    PK_HANDLER   /* def_handler : ON <NAME> ハンドラ源         */
+    PK_HANDLER,  /* def_handler : ON <NAME> ハンドラ源         */
+    PK_SCRIPT    /* def_port    : スクリプト内ポート（本体=PORTブロック・両辺可・産出型あり, v0.4.5） */
 } port_kind_t;
 
 typedef struct {
     char          name[CFG_MAX_NAME];
     port_kind_t   kind;
-    script_type_t out_type;   /* 産出型（PK_IN / PK_INOUT のみ有効, v0.3.8）。out/handler/const は未使用 */
+    script_type_t out_type;   /* 産出型（PK_IN / PK_INOUT / PK_SCRIPT で有効, v0.3.8/v0.4.5）。out/handler/const は未使用 */
     int32_t       const_val;  /* PK_CONST */
     in_fn_t       get_fn;     /* PK_IN / PK_INOUT（関数ポートは NULL） */
     out_fn_t      set_fn;     /* PK_OUT / PK_INOUT */
+    uint16_t      bc_start;   /* PK_SCRIPT: 本体バイトコード開始オフセット（0xFFFF=本体未定義, v0.4.5） */
 } port_t;
 
 /* ---- ブロック/トリガ（§6） ---- */
@@ -73,6 +75,14 @@ typedef struct {
     int32_t iter;    /* 現在の反復カウンタ（1..limit）＝ ITR */
     int32_t limit;   /* 入口でスナップショットした N */
 } loop_frame_t;
+
+/* ---- コールフレーム（§3 §7 スクリプト内ポート, v0.4.5）。WAIT 禁止ゆえティックをまたがない。
+ * ARG/SARG は仮引数＝呼び出しで上書きし、戻り時に caller の値を復元する（VAR/SVAR は共有で退避しない）。 */
+typedef struct {
+    uint16_t ret_pc;                            /* 呼び出し元の再開オフセット */
+    value_t  save_arg[CFG_ARG_COUNT];           /* caller ARG[] の退避 */
+    char     save_sarg[CFG_SARG_COUNT][CFG_SARG_LEN]; /* caller SARG[] の退避 */
+} call_frame_t;
 
 /* 動的添字アクセス（N -> SLOT, §4 v0.4.4）のスロット識別（OP_INDEX オペランド）。
  * VAR/GVAR/ARG=int スロット、SVAR/SGVAR/SARG=str スロット。ARG/SARG は read のみ（受信専用）。 */
@@ -125,6 +135,11 @@ typedef struct {
      * push/pop が完結し、tick をまたがない（loop_sp は各 block 開始時 0）。 */
     loop_frame_t loop[CFG_LOOP_NEST];
     int          loop_sp;
+
+    /* コールフレームスタック（§3 §7 スクリプト内ポート, v0.4.5）。深さは load 時の静的DAG判定で
+     * CFG_CALL_NEST 以内を検算済み（実行時溢れは到達不能・防御assertのみ）。各 block 開始時 0。 */
+    call_frame_t callstack[CFG_CALL_NEST];
+    int          call_sp;
 
     /* ポート表（§3） */
     port_t  ports[CFG_MAX_PORTS];

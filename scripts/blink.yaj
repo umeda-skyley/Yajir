@@ -1,4 +1,4 @@
-// blink.txt - Lチカ（500ms点滅）
+// blink.yaj - Lチカ（500ms点滅）
 // LED1 = Nucleo-L476RG の LD2(PA5)。PC版でもコンソールに [GPIO] LED1 -> 0/1 が出る。
 
 

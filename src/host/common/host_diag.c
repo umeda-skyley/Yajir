@@ -22,7 +22,8 @@ const char *script_strerror(script_err_t code)
         case ERR_BAD_SLOT_INDEX: return "bad slot index (must be constant & in range)";
         case ERR_NEST_TOO_DEEP:  return "IFYES/REPEAT nesting too deep";
         case ERR_BAD_POSITION:   return "bad port position (in on right / out on left / wrong direction)";
-        case ERR_TOO_MANY_PORTS: return "too many ports (def_handler exceeded the port table)";
+        case ERR_TOO_MANY_PORTS: return "too many ports (def_handler/def_port exceeded the port table)";
+        case ERR_RECURSION:      return "recursive script port call (cycle)";
         case ERR_SYNTAX:         return "syntax error";
     }
     return "load error";

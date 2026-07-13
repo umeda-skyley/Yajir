@@ -75,6 +75,12 @@
 #ifndef CFG_LOOP_NEST
 #define CFG_LOOP_NEST       4     /* REPEATループのネスト上限（§7, v0.4.4） */
 #endif
+#ifndef CFG_CALL_NEST
+#define CFG_CALL_NEST       4     /* スクリプト内ポート呼び出し深さ上限（§3, v0.4.5・ロード時DFSで検算） */
+#endif
+#ifndef CFG_MAX_SCRIPT_PORTS
+#define CFG_MAX_SCRIPT_PORTS 16   /* def_port の最大数（コンパイル時のDAG判定用・ビットセット幅≤32, v0.4.5） */
+#endif
 #ifndef CFG_INSTR_BUDGET
 #define CFG_INSTR_BUDGET    20000 /* 1 tickあたりの命令数バジェット（暴走防止） */
 #endif

@@ -84,6 +84,11 @@ typedef enum {
     OP_INDEX,            /* U8 islot, U8 argc : 動的添字。argc==1=read / >=2=write。第1引数=添字(1始まり)。
                             産出はスロット型で RESULT/SRESULT へ。範囲外は benign（read=0/空・write=no-op） */
 
+    /* ---- スクリプト内ポート（サブルーチン, §3 §7, v0.4.5） ---- */
+    OP_CALL_SCRIPT,      /* U8 portidx, U8 argc : 同期呼び出し。argc値を ARG/SARG へ振り分け（caller ARG/SARG は
+                            退避）、フレームをpushしてポート本体 bc_start へジャンプ。戻りで ARG/SARG 復帰（HALT） */
+    OP_STORE_RESULT,     /* 先頭1値を pop して RESULT へ（値付き EXIT の int 戻り。str は OP_STORE_SSTR SRESULT） */
+
     OP__COUNT
 } opcode_t;
 

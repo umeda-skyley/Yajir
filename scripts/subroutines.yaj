@@ -1,0 +1,67 @@
+// subroutines.yaj - スクリプト内ポート（サブルーチン）ショーケース（v0.4.5）
+//
+// def_port で「戻り値を返すサブルーチン」を定義し、値 -> EXIT で返す。
+// C を1行も書かずに、同期・チェイン可能な自作ポートが作れる。
+//   - CLAMP100 : int を返す（早期 EXIT のガード節デモ）
+//   - GRADE    : str を返す（点数 -> 評価文字。多段 IFYES + 早期 EXIT）
+//   - BAR      : str を返す（REPEAT + MERGER で棒グラフ文字列を組み立てる）
+// 引数は ARG/SARG（VMが自動退避）、VAR/SVAR は呼び出し元と共有の作業場。
+
+def_port(CLAMP100, T_INT)      // 点数を 0..100 に飽和
+def_port(GRADE,    T_STR)      // 点数 -> "A".."F"
+def_port(BAR,      T_STR)      // n -> "#" を n 個
+
+PORT CLAMP100
+    (ARG[0] < 0)   -> IFYES
+        0 -> EXIT              // 早期リターン（下限）
+    END
+    (ARG[0] > 100) -> IFYES
+        100 -> EXIT            // 早期リターン（上限）
+    END
+    ARG[0] -> EXIT             // そのまま返す
+END
+
+PORT GRADE
+    (ARG[0] >= 80) -> IFYES
+        "A" -> EXIT
+    END
+    (ARG[0] >= 60) -> IFYES
+        "B" -> EXIT
+    END
+    (ARG[0] >= 40) -> IFYES
+        "C" -> EXIT
+    END
+    "F" -> EXIT
+END
+
+PORT BAR
+    "" -> SVAR[0]              // 共有 SVAR を作業場に（この直後で使い切る）
+    ARG[0] -> REPEAT
+        SVAR[0], "#" -> MERGER -> SVAR[0]
+    END
+    SVAR[0] -> EXIT
+END
+
+INIT
+    // 点数リスト（GVAR[0..4]）と件数（GVAR[5]）。GVAR[6]=走査インデックス（0クリア済）。
+    95  -> GVAR[0]
+    72  -> GVAR[1]
+    -5  -> GVAR[2]
+    130 -> GVAR[3]
+    50  -> GVAR[4]
+    5   -> GVAR[5]
+    "-- report --" -> STDOUT
+END
+
+MAIN
+    (GVAR[6] < GVAR[5]) -> IFYES
+        // i 番目の点数を動的リード（1始まり）→ 飽和 → VAR[0]
+        GVAR[6] + 1 -> GVAR -> CLAMP100 -> VAR[0]
+        VAR[0] -> GRADE -> SVAR[1]         // 評価文字
+        VAR[0] / 10 -> BAR -> SVAR[2]      // 10点1本の棒グラフ
+        "score=%3d grade=%s %s", VAR[0], SVAR[1], SVAR[2] -> FORMATTER -> STDOUT
+        GVAR[6] + 1 -> GVAR[6]
+    ELSE
+        1000000 -> WAIT
+    END
+END
