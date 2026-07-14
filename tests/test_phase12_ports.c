@@ -129,21 +129,41 @@ int main(void)
         }
     }
 
-    /* 6) VAR は呼び出し元と共有（退避しない） */
+    /* 6) VAR は呼び出し元と独立（private ローカル・v0.4.6）＝ポートが caller の VAR を壊さない */
     {
         const char *src =
             "def_port(SETV, T_INT)\n"
             "PORT SETV\n"
-            "    99 -> VAR[0]\n"              /* 呼び出し元と共有の VAR に書く */
+            "    99 -> VAR[0]\n"              /* private VAR に書く（入口で0クリア済） */
+            "    VAR[0] -> EXIT\n"            /* 自分の private VAR[0]=99 を返す */
+            "END\n"
+            "INIT\n"
+            "    7 -> VAR[0]\n"               /* 呼び出し元 VAR[0] = 7 */
+            "    SETV -> GVAR[0]\n"           /* 呼ぶ → 99 を返す */
+            "    VAR[0] -> GVAR[1]\n"         /* private ゆえ caller VAR[0] は 7 のまま */
+            "END\n";
+        run(src);
+        CHECK(vm()->gvar[0].i == 99, "PORT sees its own private VAR[0]==99");
+        CHECK(vm()->var[0].i == 7,   "caller VAR[0] preserved (private, not clobbered)");
+        CHECK(vm()->gvar[1].i == 7,  "caller reads its own VAR[0]==7 after call");
+    }
+
+    /* 6b) SVAR も private（v0.4.6）＝ポートが caller の SVAR を壊さない */
+    {
+        const char *src =
+            "def_port(SCRATCH, T_INT)\n"
+            "PORT SCRATCH\n"
+            "    \"junk\" -> SVAR[0]\n"        /* private SVAR に書く */
             "    0 -> EXIT\n"
             "END\n"
             "INIT\n"
-            "    SETV -> GVAR[0]\n"           /* 呼ぶ（戻り値0は捨てる） */
-            "    VAR[0] -> GVAR[1]\n"         /* 共有ゆえ 99 が見える */
+            "    \"keep\" -> SVAR[0]\n"        /* 呼び出し元 SVAR[0] = \"keep\" */
+            "    SCRATCH -> GVAR[0]\n"         /* 呼ぶ */
+            "    SVAR[0] -> SGVAR[0]\n"        /* private ゆえ \"keep\" のまま */
             "END\n";
         run(src);
-        CHECK(vm()->var[0].i == 99,  "PORT writes shared VAR[0]");
-        CHECK(vm()->gvar[1].i == 99, "caller sees VAR[0]==99 after call");
+        CHECK(strcmp(vm()->svar[0], "keep") == 0,  "caller SVAR[0] preserved (private)");
+        CHECK(strcmp(vm()->sgvar[0], "keep") == 0, "caller reads its own SVAR[0]=='keep'");
     }
 
     /* 7) ネスト呼び（A->B->C・深さ3）は CFG_CALL_NEST 以内でコンパイル＆実行 */

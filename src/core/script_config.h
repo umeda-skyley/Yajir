@@ -62,7 +62,7 @@
 #define CFG_MAX_RESOURCES   32    /* ホストCリソース登録数（def_*が束縛する先） */
 #endif
 #ifndef CFG_MAX_ALIAS
-#define CFG_MAX_ALIAS       16    /* def_alias の最大数（コンパイル時のみ・名前→スロット/数値/文字列） */
+#define CFG_MAX_ALIAS       24    /* def_alias/def_local の同時最大数（大域＋1ブロックの局所・コンパイル時のみ, v0.4.6） */
 #endif
 
 /* VM 実行資源（§12） */

@@ -76,12 +76,18 @@ typedef struct {
     int32_t limit;   /* 入口でスナップショットした N */
 } loop_frame_t;
 
-/* ---- コールフレーム（§3 §7 スクリプト内ポート, v0.4.5）。WAIT 禁止ゆえティックをまたがない。
- * ARG/SARG は仮引数＝呼び出しで上書きし、戻り時に caller の値を復元する（VAR/SVAR は共有で退避しない）。 */
+/* ---- コールフレーム（§3 §7 スクリプト内ポート, v0.4.5/v0.4.6）。WAIT 禁止ゆえティックをまたがない。
+ * ARG/SARG/VAR/SVAR は全てポートの private ローカル＝呼び出しで退避＋クリアし、戻り時に caller の値を
+ * 復元する（v0.4.6：VAR/SVAR も private 化＝ポートが caller の作業変数を壊さない「真の関数」に）。
+ * 共有され続けるのは GVAR/SGVAR（大域）だけ。戻り値は RESULT/SRESULT。
+ * RAM: 1フレーム ≈ ARG+SARG+VAR+SVAR の退避。SVAR(CFG_SVAR_COUNT×CFG_SSTR_LEN)が支配項ゆえ、
+ * CFG_CALL_NEST を実際の最大呼び出し深度（ロード時DFSで検算済）まで絞るとRAMを直接削れる。 */
 typedef struct {
     uint16_t ret_pc;                            /* 呼び出し元の再開オフセット */
-    value_t  save_arg[CFG_ARG_COUNT];           /* caller ARG[] の退避 */
+    value_t  save_arg[CFG_ARG_COUNT];           /* caller ARG[] の退避（受信引数） */
     char     save_sarg[CFG_SARG_COUNT][CFG_SARG_LEN]; /* caller SARG[] の退避 */
+    value_t  save_var[CFG_VAR_COUNT];           /* caller VAR[] の退避（v0.4.6 private ローカル化） */
+    char     save_svar[CFG_SVAR_COUNT][CFG_SSTR_LEN];  /* caller SVAR[] の退避（同上） */
 } call_frame_t;
 
 /* 動的添字アクセス（N -> SLOT, §4 v0.4.4）のスロット識別（OP_INDEX オペランド）。

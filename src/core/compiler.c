@@ -33,14 +33,16 @@ typedef struct {
 static parser_t P;
 static script_error_t s_error;   /* 直近のロード失敗（構造化, v0.3.7 §11） */
 
-/* ---- エイリアス（def_alias, v0.3.8）。純コンパイル時の名前解決＝VM は一切関与しない ----
- * 対象は GVAR/SGVAR（読み書き可）・数値・文字列（読取専用）。VAR/SVAR/ARG/SARG は不可
- * （意味が局所/プロトコル位置依存ゆえ安定した名前を付けられない）。 */
-typedef enum { AL_GVAR, AL_SGVAR, AL_INT, AL_STR } alias_kind_t;
+/* ---- エイリアス（def_alias v0.3.8 ／ def_local v0.4.6）。純コンパイル時の名前解決＝VM は一切関与しない ----
+ * def_alias（大域・ファイル冒頭）: GVAR/SGVAR（読み書き可）・数値・文字列（読取専用）。
+ * def_local（局所・ブロック冒頭・END まで）: VAR/SVAR（読み書き可）・ARG/SARG（読取専用）・数値・文字列。
+ *   局所分はブロック入口で s_nalias を記録し END でそこまで切り詰める（high-water-mark, §3 v0.4.6）。
+ *   別ブロック間の同名は可（切り詰めで消える）、大域名との衝突/同一ブロック二重宣言は alias_find で弾く。 */
+typedef enum { AL_GVAR, AL_SGVAR, AL_INT, AL_STR, AL_VAR, AL_SVAR, AL_ARG, AL_SARG } alias_kind_t;
 typedef struct {
     char         name[CFG_MAX_NAME];
     alias_kind_t kind;
-    int32_t      v;   /* GVAR/SGVAR=添字 / INT=値 / STR=文字列プールoffset */
+    int32_t      v;   /* スロット系=添字 / INT=値 / STR=文字列プールoffset */
 } alias_t;
 static alias_t s_aliases[CFG_MAX_ALIAS];
 static int     s_nalias;
@@ -260,6 +262,10 @@ static void parse_primary(void)
                 case AL_SGVAR: emit8(OP_LOAD_SGVAR); emit8((int)al->v); g_type = TY_STR; return;
                 case AL_INT:   emit8(OP_PUSH_INT);   emit_i32(al->v); return;                          /* int */
                 case AL_STR:   emit8(OP_PUSH_STR);   emit8((int)al->v); emit8((int)(al->v >> 8)); g_type = TY_STR; return;
+                case AL_VAR:   emit8(OP_LOAD_VAR);   emit8((int)al->v); return;                        /* 局所int, v0.4.6 */
+                case AL_SVAR:  emit8(OP_LOAD_SVAR);  emit8((int)al->v); g_type = TY_STR; return;
+                case AL_ARG:   emit8(OP_LOAD_ARG);   emit8((int)al->v); return;                        /* 受信int */
+                case AL_SARG:  emit8(OP_LOAD_SARG);  emit8((int)al->v); g_type = TY_STR; return;       /* 受信str */
                 }
             }
         }
@@ -448,6 +454,7 @@ static void normalize_to_one(int argc)
 
 /* ---- 文 ---- */
 static void parse_stmt_list(void);
+static void parse_local_decls(void);   /* ブロック冒頭の def_local 列（定義は後方, v0.4.6） */
 
 /* (式) -> IFYES … [ELSE …] END。条件は既にpush済み（argc個） */
 static void parse_if(int argc, int line)
@@ -539,6 +546,9 @@ static void parse_stmt(void)
     int line = P.cur.line;
     char tname[CFG_MAX_NAME];
     int argc, pi;
+
+    /* def_local はブロック冒頭一括のみ（文の後は不可, §3 v0.4.6）。ここに来た＝文の位置なので構文エラー。 */
+    if (is_kw("def_local")) fail(line, ERR_SYNTAX);
 
     /* 単独 EXIT: 「戻り型のデフォルト値を返して抜ける」略記（§7 v0.4.5・後方互換）。
      * ハンドラ/T_INTポートは 0->EXIT、T_STRポートは ""->EXIT と同義＝END到達フォールスルーと同一。
@@ -684,6 +694,15 @@ static void parse_stmt(void)
             case AL_SGVAR:
                 if (g_first_type != TY_STR) fail(line, ERR_TYPE_MISMATCH);
                 normalize_to_one(argc); emit8(OP_STORE_SSTR); emit8(SSLOT_SGVAR); emit8((int)al->v); end_stmt(line); return;
+            case AL_VAR:   /* 局所エイリアス VAR（読み書き可, v0.4.6） */
+                if (g_first_type != TY_INT) fail(line, ERR_TYPE_MISMATCH);
+                emit8(OP_STORE_VAR); emit8((int)al->v); emit8(argc); end_stmt(line); return;
+            case AL_SVAR:
+                if (g_first_type != TY_STR) fail(line, ERR_TYPE_MISMATCH);
+                normalize_to_one(argc); emit8(OP_STORE_SSTR); emit8(SSLOT_SVAR); emit8((int)al->v); end_stmt(line); return;
+            case AL_ARG:
+            case AL_SARG:
+                fail_tok(line, ERR_BAD_POSITION, tname);   /* ARG/SARG 別名は受信専用（右辺不可） */
             case AL_INT:
             case AL_STR:
                 fail_tok(line, ERR_BAD_POSITION, tname);   /* 数値/文字列エイリアスは読取専用（右辺不可） */
@@ -718,17 +737,20 @@ static void parse_stmt_list(void)
 /* INIT / MAIN */
 static void parse_simple_block(block_kind_t kind)
 {
-    int bi;
+    int bi, amark;
     expect_newline();           /* ヘッダ行終端 */
     bi = add_block(kind);
     P.yield_ok = (kind == BLK_MAIN || kind == BLK_INIT);  /* WAITはMAIN/INITで可（v0.3.4） */
     P.nest = 0;
     P.repeat_depth = 0;
     P.cur_port_type = -1; P.cur_port_sidx = -1;   /* スクリプト内ポート本体ではない（v0.4.5） */
+    amark = s_nalias;           /* ローカル別名スコープ入口（v0.4.6） */
+    parse_local_decls();        /* 冒頭一括の def_local */
     parse_stmt_list();
     if (!is_kw("END")) fail_end(P.cur.line, P.open_line);  /* aux=このブロックの開きヘッダ行 */
     adv();
     emit8(OP_HALT);
+    s_nalias = amark;           /* ブロック局所別名を捨てる（END まで, v0.4.6） */
     if (kind == BLK_INIT) vm()->init_blk = bi;
     else                  vm()->main_blk = bi;
     expect_newline();
@@ -765,16 +787,20 @@ static void parse_on_block(void)
     expect_newline();
     {
         int bi = add_block(kind);
+        int amark;
         vm()->blocks[bi].period   = period;
         vm()->blocks[bi].handler_port = handler;
         P.yield_ok = 0;   /* ON ハンドラは WAIT 禁止 */
         P.nest = 0;
         P.repeat_depth = 0;
         P.cur_port_type = -1; P.cur_port_sidx = -1;   /* ハンドラ本体（スクリプト内ポートではない, v0.4.5） */
+        amark = s_nalias;           /* ローカル別名スコープ入口（v0.4.6） */
+        parse_local_decls();
         parse_stmt_list();
         if (!is_kw("END")) fail_end(P.cur.line, P.open_line);  /* aux=ONの開きヘッダ行 */
         adv();
         emit8(OP_HALT);
+        s_nalias = amark;           /* ブロック局所別名を捨てる（v0.4.6） */
     }
     expect_newline();
 }
@@ -812,6 +838,49 @@ static void parse_def_alias(void)
     s_nalias++;
     expect(T_RPAREN, "')'");
     expect_newline();
+}
+
+/* def_local(NAME, 実体) を解析してブロック局所エイリアスを表に追加（v0.4.6）。実体は
+ * VAR/SVAR（読み書き）・ARG/SARG（読取専用）・数値/文字列（読専）。GVAR/SGVAR は不可（def_alias で）。
+ * ブロック冒頭でのみ呼ばれ、END でブロック parser が s_nalias を切り詰めて局所分を捨てる。
+ * 大域エイリアス名との衝突／同一ブロック内二重宣言は alias_find が拾って ERR_SYNTAX。 */
+static void parse_def_local(void)
+{
+    char name[CFG_MAX_NAME];
+    int line = P.cur.line;
+    alias_t *al;
+    adv();                                  /* "def_local" を消費 */
+    expect(T_LPAREN, "'('");
+    if (P.cur.type != T_IDENT) fail(P.cur.line, ERR_SYNTAX);
+    strncpy(name, P.cur.text, CFG_MAX_NAME - 1); name[CFG_MAX_NAME - 1] = '\0';
+    adv();
+    /* 衝突: 予約語・スロット名・登録ポート／大域or同一ブロックの既存エイリアス（別ブロック同名は切り詰め済で不在） */
+    if (is_reserved_name(name) || vm_find_port(name) >= 0 || alias_find(name))
+        fail_tok(line, ERR_SYNTAX, name);
+    expect(T_COMMA, "','");
+    if (s_nalias >= CFG_MAX_ALIAS) fail(line, ERR_SYNTAX);   /* 表が満杯 */
+    al = &s_aliases[s_nalias];
+    strncpy(al->name, name, CFG_MAX_NAME - 1); al->name[CFG_MAX_NAME - 1] = '\0';
+    if      (P.cur.type == T_NUMBER) { al->kind = AL_INT;  al->v = P.cur.num;     adv(); }
+    else if (P.cur.type == T_STRING) { al->kind = AL_STR;  al->v = P.cur.str_off; adv(); }
+    else if (is_kw("VAR"))  { adv(); al->kind = AL_VAR;  al->v = read_index(CFG_VAR_COUNT,  "VAR"); }
+    else if (is_kw("SVAR")) { adv(); al->kind = AL_SVAR; al->v = read_index(CFG_SVAR_COUNT, "SVAR"); }
+    else if (is_kw("ARG"))  { adv(); al->kind = AL_ARG;  al->v = read_index(CFG_ARG_COUNT,  "ARG"); }
+    else if (is_kw("SARG")) { adv(); al->kind = AL_SARG; al->v = read_index(CFG_SARG_COUNT, "SARG"); }
+    else fail(P.cur.line, ERR_SYNTAX);      /* 対象は VAR/SVAR/ARG/SARG/数値/文字列 のみ（GVAR/SGVARは def_alias） */
+    s_nalias++;
+    expect(T_RPAREN, "')'");
+    expect_newline();
+}
+
+/* ブロック冒頭の def_local 宣言列を消費（本体の最初の文より前・一括, v0.4.6）。 */
+static void parse_local_decls(void)
+{
+    for (;;) {
+        skip_newlines();
+        if (!is_kw("def_local")) return;
+        parse_def_local();
+    }
 }
 
 /* def_handler(NAME) を解析してハンドラ源ポートを登録（v0.4.1）。
@@ -885,7 +954,7 @@ static void parse_def_port(void)
 static void parse_port_block(void)
 {
     char name[CFG_MAX_NAME];
-    int line = P.open_line, pi, sidx;
+    int line = P.open_line, pi, sidx, amark;
     if (P.cur.type != T_IDENT) fail(P.cur.line, ERR_SYNTAX);
     strncpy(name, P.cur.text, CFG_MAX_NAME - 1); name[CFG_MAX_NAME - 1] = '\0';
     adv();
@@ -900,10 +969,13 @@ static void parse_port_block(void)
     P.repeat_depth = 0;
     P.cur_port_type = (vm()->ports[pi].out_type == SCRIPT_T_STR) ? TY_STR : TY_INT;
     P.cur_port_sidx = sidx;
+    amark = s_nalias;           /* ローカル別名スコープ入口（v0.4.6） */
+    parse_local_decls();
     parse_stmt_list();
     if (!is_kw("END")) fail_end(P.cur.line, P.open_line);
     adv();
     emit_exit_default(P.cur_port_type);   /* EXIT されず END 到達＝既定値(0/空)を産出して return */
+    s_nalias = amark;           /* ブロック局所別名を捨てる（v0.4.6） */
     P.cur_port_type = -1;
     P.cur_port_sidx = -1;
     expect_newline();
@@ -1003,6 +1075,7 @@ int compiler_compile(const char *src, size_t len)
         if (is_kw("def_alias"))   { parse_def_alias();   continue; }   /* コンパイラが解釈する def_（v0.3.8） */
         if (is_kw("def_handler")) { parse_def_handler(); continue; }   /* 同上・ハンドラ源宣言（v0.4.1） */
         if (is_kw("def_port"))    { parse_def_port();    continue; }   /* 同上・スクリプト内ポート宣言（v0.4.5） */
+        if (is_kw("def_local"))   fail(P.cur.line, ERR_SYNTAX);        /* def_local はブロック冒頭のみ（ファイル冒頭不可, v0.4.6） */
         if (!strncmp(P.cur.text, "def_", 4)) { skip_def_line(); continue; }  /* 他の def_ は非解釈（写し） */
         if (is_kw("INIT")) { P.open_line = P.cur.line; adv(); parse_simple_block(BLK_INIT); }
         else if (is_kw("MAIN")) { P.open_line = P.cur.line; adv(); parse_simple_block(BLK_MAIN); }

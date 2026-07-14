@@ -147,6 +147,8 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
                 call_frame_t *f = &m->callstack[--m->call_sp];
                 memcpy(m->arg,  f->save_arg,  sizeof(m->arg));
                 memcpy(m->sarg, f->save_sarg, sizeof(m->sarg));
+                memcpy(m->var,  f->save_var,  sizeof(m->var));   /* VAR/SVAR も復帰（private, v0.4.6） */
+                memcpy(m->svar, f->save_svar, sizeof(m->svar));
                 p = f->ret_pc;
                 break;
             }
@@ -458,14 +460,18 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
             if (base < 0) { *pc = ip; return EXEC_ERROR; }
             if (m->call_sp >= CFG_CALL_NEST)  { *pc = ip; return EXEC_ERROR; } /* 静的に到達不能・防御 */
             if (body >= m->code_len)          { *pc = ip; return EXEC_ERROR; } /* 本体未定義/範囲外・防御 */
-            /* caller の ARG/SARG を退避（仮引数スコープ）。VAR/SVAR は共有ゆえ退避しない。 */
+            /* caller の ARG/SARG/VAR/SVAR を退避（全て private ローカル・v0.4.6）。共有は GVAR/SGVAR のみ。 */
             f = &m->callstack[m->call_sp++];
             f->ret_pc = p;
             memcpy(f->save_arg,  m->arg,  sizeof(m->arg));
             memcpy(f->save_sarg, m->sarg, sizeof(m->sarg));
-            /* 引数で ARG/SARG を作る。まず 0/空にクリア（不足位置は benign） */
+            memcpy(f->save_var,  m->var,  sizeof(m->var));
+            memcpy(f->save_svar, m->svar, sizeof(m->svar));
+            /* private 面をクリア（VAR/SVAR は真っさらなローカル、ARG/SARG は下で引数を充填） */
             for (k = 0; k < CFG_ARG_COUNT; k++)  m->arg[k] = val_int(0);
             for (k = 0; k < CFG_SARG_COUNT; k++) m->sarg[k][0] = '\0';
+            for (k = 0; k < CFG_VAR_COUNT; k++)  m->var[k] = val_int(0);
+            for (k = 0; k < CFG_SVAR_COUNT; k++) m->svar[k][0] = '\0';
             for (k = 0; k < argc && k < CFG_ARG_COUNT; k++) {
                 value_t v = m->stack[base + k];
                 if (val_is_str(v)) {                         /* str 位置 → SARG[k]（int ビューは 0 のまま） */

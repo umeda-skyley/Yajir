@@ -1,0 +1,37 @@
+// local_alias.yaj - ブロック局所エイリアス def_local ショーケース（v0.4.6）
+//
+// VAR/SVAR/ARG/SARG に「そのブロック内でだけ意味を持つ名前」を付けて可読性を上げる。
+// def_alias（大域・ファイル冒頭）と違い、def_local は END まで局所で、別ブロックで同名を
+// 使い回せる（取り違えを誘発しない）。GVAR/SGVAR は大域なので従来どおり def_alias で名付ける。
+
+def_alias(COUNT, GVAR[0])       // 大域カウンタは def_alias
+
+def_port(STATS, T_STR)          // 3値の min/max/sum を1行の文字列にして返すサブルーチン
+
+PORT STATS
+    def_local(A, ARG[0])        // 受信引数に名前を付ける（ARG[0..2] が何かが一目で分かる）
+    def_local(B, ARG[1])
+    def_local(C, ARG[2])
+    def_local(LO, VAR[0])       // 作業用スロットにも名前
+    def_local(HI, VAR[1])
+
+    A, B, C -> MIN -> LO        // VAR[0] = 最小
+    A, B, C -> MAX -> HI        // VAR[1] = 最大
+    "min=%d max=%d sum=%d", LO, HI, A + B + C -> FORMATTER -> EXIT
+END
+
+INIT
+    "-- def_local demo --" -> STDOUT
+END
+
+MAIN
+    def_local(MSG, SVAR[2])     // このブロック限定の別名（STATS の A/B/C とは無関係）
+
+    (COUNT < 3) -> IFYES
+        COUNT * 10, COUNT * 3, 7 -> STATS -> MSG
+        "sample %d: %s", COUNT, MSG -> FORMATTER -> STDOUT
+        COUNT + 1 -> COUNT
+    ELSE
+        1000000 -> WAIT
+    END
+END
