@@ -1,0 +1,76 @@
+// PC host専用のHTTP / AIポートまとめサンプル。
+// AIポートはプロジェクト直下の.envからAPIキーとモデル設定を読む。
+// 実行すると各APIを呼ぶので、ネット接続と課金に注意。
+
+INIT
+    "=== HTTP_SYNC ===" -> STDOUT
+    "https://www.example.com" -> HTTP_SYNC
+    "HTTP_SYNC status: ", RESULT -> STDOUT
+    SRESULT -> SGVAR[0]
+    SGVAR[0] -> COUNTER
+    "HTTP_SYNC bytes: ", RESULT -> STDOUT
+    SGVAR[0], 1, 300 -> SLICER
+    SRESULT -> STDOUT
+
+    "=== clear AI histories ===" -> STDOUT
+    0 -> GPT_HISTORY
+    0 -> CLAUDE_HISTORY
+    0 -> GEMINI_HISTORY
+
+    "=== GPT_SYNC ===" -> STDOUT
+    "短く答えてください。合言葉は「みずたま」です。" -> GPT_SYNC
+    "GPT_SYNC status: ", RESULT -> STDOUT
+    SRESULT -> STDOUT
+    "GPT_HISTORY bytes: ", GPT_HISTORY -> STDOUT
+
+    "=== CLAUDE_SYNC ===" -> STDOUT
+    "短く答えてください。合言葉は「つきあかり」です。" -> CLAUDE_SYNC
+    "CLAUDE_SYNC status: ", RESULT -> STDOUT
+    SRESULT -> STDOUT
+    "CLAUDE_HISTORY bytes: ", CLAUDE_HISTORY -> STDOUT
+
+    "=== GEMINI_SYNC ===" -> STDOUT
+    "短く答えてください。合言葉は「こもれび」です。" -> GEMINI_SYNC
+    "GEMINI_SYNC status: ", RESULT -> STDOUT
+    SRESULT -> STDOUT
+    "GEMINI_HISTORY bytes: ", GEMINI_HISTORY -> STDOUT
+
+    "=== start async requests ===" -> STDOUT
+    "https://www.example.com" -> HTTP_ASYNC
+    "さっきの合言葉だけを返してください。" -> GPT_ASYNC
+    "さっきの合言葉だけを返してください。" -> CLAUDE_ASYNC
+    "さっきの合言葉だけを返してください。" -> GEMINI_ASYNC
+END
+
+MAIN
+    100 -> WAIT
+END
+
+ON HTTP
+    "=== ON HTTP ===" -> STDOUT
+    "HTTP_ASYNC status: ", ARG[1] -> STDOUT
+    SARG[0] -> SGVAR[0]
+    SGVAR[0] -> COUNTER
+    "HTTP_ASYNC bytes: ", RESULT -> STDOUT
+END
+
+ON GPT
+    "=== ON GPT ===" -> STDOUT
+    "GPT_ASYNC status: ", ARG[1] -> STDOUT
+    SARG[0] -> STDOUT
+    "GPT_HISTORY bytes: ", GPT_HISTORY -> STDOUT
+END
+
+ON CLAUDE
+    "=== ON CLAUDE ===" -> STDOUT
+    "CLAUDE_ASYNC status: ", ARG[1] -> STDOUT
+    SARG[0] -> STDOUT
+    "CLAUDE_HISTORY bytes: ", CLAUDE_HISTORY -> STDOUT
+END
+
+ON GEMINI
+    "=== ON GEMINI ===" -> STDOUT
+    "GEMINI_ASYNC status: ", ARG[1] -> STDOUT
+    SARG[0] -> STDOUT
+    "GEMINI_HISTORY bytes: ", GEMINI_HISTORY -> STDOUT
+END

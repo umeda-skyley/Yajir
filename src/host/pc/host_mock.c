@@ -5,19 +5,38 @@
  * エラー文字列化と did-you-mean は common/host_diag.c に括り出した（全プラットフォーム共通）。
  *
  *   - get_tick()      : 単調増加ms（NOWへ束縛）
- *   - th_stdout       : my_print_f 相当。char型タグ=文字 / int型タグ=数値 / STR=文字列
+ *   - th_stdout       : my_print_f 相当。int は10進、str はUTF-8文字列として出力
  *   - th_calc         : my_calc(a,b)（戻り値→RESULT）
  *   - th_sysinit      : init_system()（void。RESULTは送信規則で触らない, §4）
  *   - LED1/BUZZER     : GPIO別名。状態変化をコンソールへ
  *   - get_i2c1_val    : I2C1擬似センサ値
+ *   - net/file utils  : PC専用のHTTP/AI/FILEポート群
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <windows.h>
 #include "host_mock.h"
 #include "script.h"
 #include "host_diag.h"   /* host_diag_reset / host_diag_note（did-you-mean 候補収集） */
+#include "netutil.h"
+#include "fileutil.h"
+
+/* PC hostのイベントenqueueを守る短いクリティカルセクション。
+ * script_config.h の YJ_PORT_HEADER 経由で YJ_ENTER_CRITICAL/YJ_EXIT_CRITICAL から呼ばれる。 */
+static CRITICAL_SECTION g_yj_lock;
+static int g_yj_lock_ready = 0;
+
+void yj_pc_enter_critical(void)
+{
+    if (g_yj_lock_ready) EnterCriticalSection(&g_yj_lock);
+}
+
+void yj_pc_exit_critical(void)
+{
+    if (g_yj_lock_ready) LeaveCriticalSection(&g_yj_lock);
+}
 
 /* register + 候補収集（host_diag_note）を一手にやる薄いラッパ。 */
 static void reg_out  (const char *n, script_out_fn f){ script_register_out(n, f); host_diag_note(n); }
@@ -38,15 +57,43 @@ int32_t get_tick(void)
 /* ---- アリーナメモリサイズを返す ---- */
 extern int get_vmsize(void);
 
-/* ---- STDOUT（my_print_f 相当）---- */
+/* ---- STDOUT（UTF-8対応の my_print_f 相当）---- */
+static void host_write_utf8(const char *s)
+{
+    HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode;
+    if (h != INVALID_HANDLE_VALUE && GetConsoleMode(h, &mode)) {
+        int need = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
+        if (need > 0) {
+            WCHAR stack_buf[512];
+            WCHAR *w = stack_buf;
+            DWORD written = 0;
+            if (need > (int)(sizeof(stack_buf) / sizeof(stack_buf[0]))) {
+                w = (WCHAR *)malloc((size_t)need * sizeof(WCHAR));
+                if (!w) return;
+            }
+            MultiByteToWideChar(CP_UTF8, 0, s, -1, w, need);
+            WriteConsoleW(h, w, (DWORD)(need - 1), &written, NULL);
+            if (w != stack_buf) free(w);
+            return;
+        }
+    }
+    fputs(s, stdout);
+}
+
 static void th_stdout(int argc, const script_value_t *a)
 {
     int i;
     for (i = 0; i < argc; i++) {
-        if (script_val_is_str(a[i])) fputs(script_resolve_str(a[i]), stdout);  /* 文字列定数/スロット */
-        else                         printf("%d", (int)a[i].i);                /* int→10進（グリフは CHR/FORMATTER %c で・v0.4.2） */
+        if (script_val_is_str(a[i])) {
+            host_write_utf8(script_resolve_str(a[i]));  /* 文字列定数/スロット（UTF-8） */
+        } else {
+            char num[16];
+            snprintf(num, sizeof(num), "%d", (int)a[i].i);
+            host_write_utf8(num);                       /* int→10進（グリフは CHR/FORMATTER %c で・v0.4.2） */
+        }
     }
-    printf("\r\n");
+    host_write_utf8("\r\n");
     fflush(stdout);
 }
 
@@ -106,6 +153,7 @@ static int32_t get_i2c1_val(void)
 void host_register_all(void)
 {
     g_start = GetTickCount64();
+    if (!g_yj_lock_ready) { InitializeCriticalSection(&g_yj_lock); g_yj_lock_ready = 1; }
     host_diag_reset();   /* 再ロード時も did-you-mean 候補を作り直す（重複防止） */
 
     reg_out  ("SYS_INIT",       th_sysinit);
@@ -117,6 +165,27 @@ void host_register_all(void)
     reg_out  ("STDOUT",         th_stdout);
     reg_inout("VAL_CALCULATOR", NULL, th_calc, SCRIPT_T_INT);
     reg_out  ("DELAY", th_delay);   /* ブロッキング遅延＝産出none の out */
+
+    register_netutils();   /* HTTP_SYNC/HTTP_ASYNC, GPT/CLAUDE/GEMINI 系 */
+    register_fileutils();  /* FILE_READER/FILE_WRITER */
+
+    /* netutil.c 側で登録されるPC専用ポートを did-you-mean 候補にも載せる。 */
+    host_diag_note("HTTP_SYNC");     /* URL -> HTTP_SYNC で本文を SRESULT、status を RESULT へ */
+    host_diag_note("HTTP_ASYNC");    /* URL -> HTTP_ASYNC で非同期GET開始 */
+    host_diag_note("HTTP");          /* 完了イベント: SARG[0]=本文, ARG[1]=status */
+    host_diag_note("GPT_SYNC");      /* prompt/json -> GPT_SYNC でOpenAI Responses APIを呼ぶ */
+    host_diag_note("GPT_ASYNC");     /* prompt/json -> GPT_ASYNC で非同期GPT開始 */
+    host_diag_note("GPT");           /* 完了イベント: SARG[0]=返答, ARG[1]=status */
+    host_diag_note("GPT_HISTORY");
+    host_diag_note("CLAUDE_SYNC");   /* prompt/json -> CLAUDE_SYNC でAnthropic Messages APIを呼ぶ */
+    host_diag_note("CLAUDE_ASYNC");  /* prompt/json -> CLAUDE_ASYNC で非同期Claude開始 */
+    host_diag_note("CLAUDE");        /* 完了イベント: SARG[0]=返答, ARG[1]=status */
+    host_diag_note("CLAUDE_HISTORY");
+    host_diag_note("GEMINI_SYNC");   /* prompt/json -> GEMINI_SYNC でGoogle Gemini Interactions APIを呼ぶ */
+    host_diag_note("GEMINI_ASYNC");  /* prompt/json -> GEMINI_ASYNC で非同期Gemini開始 */
+    host_diag_note("GEMINI");        /* 完了イベント: SARG[0]=返答, ARG[1]=status */
+    host_diag_note("GEMINI_HISTORY");
+
     reg_const("HOT", 30);
     reg_handler("UART1");
     reg_handler("BTN");

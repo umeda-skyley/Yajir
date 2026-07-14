@@ -1,0 +1,37 @@
+
+def_alias(PROMPT, "これから私と俳句の連歌をしましょう。")
+def_alias(PROMPT2, "受け取った句の感想を一行だけ完結に述べてください。そして応答句を、次の一行で書いてください。")
+def_alias(START, "まずは私から。")
+def_alias(IMSLEEPY, "「寝ても  寝ても 眠い」")
+
+INIT
+	PROMPT, PROMPT2 -> MERGER
+	SRESULT, START -> MERGER -> SVAR[0]
+
+	SVAR[0] -> CLAUDE_SYNC
+	SVAR[0] -> GEMINI_SYNC
+	SVAR[0], IMSLEEPY -> MERGER -> GPT_ASYNC
+		
+END
+
+MAIN
+
+END
+
+ON GPT
+    "======== Gpt status: ", ARG[1] -> STDOUT
+    SARG[0] -> STDOUT
+    SARG[0] -> CLAUDE_ASYNC
+END
+
+ON CLAUDE
+    "======== Claude status: ", ARG[1] -> STDOUT
+    SARG[0] -> STDOUT
+    SARG[0] -> GEMINI_ASYNC
+END
+
+ON GEMINI
+	"======== Gemini status: ", ARG[1] -> STDOUT
+    SARG[0] -> STDOUT
+    SARG[0] -> GPT_ASYNC
+END

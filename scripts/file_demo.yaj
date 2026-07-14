@@ -1,0 +1,16 @@
+// PC host専用のファイルI/Oサンプル。
+// FILE_READERはstr産出なので、チェインではSRESULTが次のポートへ流れる。
+
+INIT
+    "file_demo_output.txt", "hello from Yajir\n" -> FILE_WRITER
+    "write bytes: ", RESULT -> STDOUT
+
+    "file_demo_output.txt", "append line\n", "a" -> FILE_WRITER
+    "append bytes: ", RESULT -> STDOUT
+
+    "file_demo_output.txt" -> FILE_READER
+    "read bytes: ", RESULT -> STDOUT
+    SRESULT -> STDOUT
+
+    "file_demo_output.txt" -> FILE_READER -> COUNTER -> STDOUT
+END

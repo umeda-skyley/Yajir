@@ -1,0 +1,18 @@
+
+def_alias(PROMPT, "このウェブサイトの内容の要約をください。")
+def_alias(TARGET, "https://www.skyley.com/")
+
+INIT
+	PROMPT -> GPT_SYNC
+	TARGET -> HTTP_SYNC -> GPT_ASYNC
+END
+
+MAIN
+
+END
+
+ON GPT
+    "======== Gpt status: ", ARG[1] -> STDOUT
+    SARG[0] -> STDOUT
+END
+

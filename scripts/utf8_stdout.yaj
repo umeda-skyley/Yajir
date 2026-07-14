@@ -1,0 +1,3 @@
+INIT
+    "日本語の表示テスト: こんにちは、Yajir" -> STDOUT
+END
