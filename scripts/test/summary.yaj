@@ -15,4 +15,3 @@ ON GPT
     "======== Gpt status: ", ARG[1] -> STDOUT
     SARG[0] -> STDOUT
 END
-
