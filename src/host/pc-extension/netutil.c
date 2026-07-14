@@ -1,4 +1,4 @@
-/* netutil.c - PC専用ネットワークUtilityポート
+/* netutil.c - PC extensionネットワークUtilityポート
  *
  * HTTP_SYNC: "https://example.com" -> HTTP_SYNC
  *   SRESULT = レスポンス本文（CFG_SSTR_LEN - 1 まで）

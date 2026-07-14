@@ -1,4 +1,4 @@
-/* fileutil.h - PC-only file utility ports */
+/* fileutil.h - PC extension file utility ports */
 #ifndef FILEUTIL_H
 #define FILEUTIL_H
 

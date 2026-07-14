@@ -1,7 +1,30 @@
 # Yajir PC host extensions
 
-Windows PCホストに追加されるHTTP、AI、ファイルI/Oポートの仕様です。これらは
-`src/host/pc`固有であり、Yajir coreや組み込みホストには含まれません。
+Windows PC拡張ホストに追加されるHTTP、AI、ファイルI/Oポートの仕様です。これらは
+`src/host/pc-extension`固有であり、Yajir coreや標準PCホスト、組み込みホストには含まれません。
+
+## ホスト構成
+
+このディレクトリは標準PCホストの差し替え実装です。エントリポイントと公開ヘッダは
+`src/host/pc/main.c`、`src/host/pc/host_mock.h`をそのまま再利用します。拡張版を作るときは
+標準の`src/host/pc/host_mock.c`をリンクせず、代わりに以下をリンクします。
+
+- `src/host/pc-extension/host_extension.c`
+- `src/host/pc-extension/netutil.c`
+- `src/host/pc-extension/fileutil.c`
+- `src/host/common/host_diag.c`
+- `src/host/pc/main.c`
+- `src/core/*.c`
+
+インクルードパスには`src/core`、`src/host/common`、`src/host/pc`、
+`src/host/pc-extension`を指定します。coreへの設定差し込みは次の2つです。
+
+```text
+YJ_CONFIG_HEADER="yajir_config_pc_extension.h"
+YJ_PORT_HEADER="yajir_port_pc_extension.h"
+```
+
+WindowsのWinINetを使用するため、リンク時に`wininet.lib`が必要です。
 
 ## 設定
 

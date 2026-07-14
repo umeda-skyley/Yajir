@@ -1,4 +1,4 @@
-/* fileutil.c - PC-only file utility ports
+/* fileutil.c - PC extension file utility ports
  *
  * FILE_READER: "path" -> FILE_READER
  *   SRESULT = file body, RESULT = bytes kept in SRESULT.

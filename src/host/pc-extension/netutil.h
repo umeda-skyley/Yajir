@@ -1,4 +1,4 @@
-/* netutil.h - PC専用ネットワークUtilityポート */
+/* netutil.h - PC extensionネットワークUtilityポート */
 #ifndef NETUTIL_H
 #define NETUTIL_H
 
