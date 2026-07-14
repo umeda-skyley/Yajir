@@ -1,0 +1,7 @@
+// Pico 2 W onboard LED blink. Send @run on a separate line after this script.
+MAIN
+    1 -> LED1
+    500 -> WAIT
+    0 -> LED1
+    500 -> WAIT
+END
