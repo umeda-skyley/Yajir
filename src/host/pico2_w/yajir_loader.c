@@ -18,6 +18,21 @@ static int g_running;
 static int g_overflow_reported;
 static int g_swallow_lf;
 
+static void reset_input(void)
+{
+    memset(g_source, 0, sizeof(g_source));
+    g_length = 0;
+    g_line_start = 0;
+    g_running = 0;
+    g_overflow_reported = 0;
+    g_swallow_lf = 0;
+}
+
+static void input_prompt(void)
+{
+    yajir_puts("Paste a script, then enter @run on its own line.\r\n> ");
+}
+
 static void put_size(size_t value)
 {
     char buf[24];
@@ -38,7 +53,7 @@ static void banner(void)
     yajir_puts("\r\nVM arena: ");
     put_size(sizeof(g_arena));
     yajir_puts(" bytes\r\n");
-    yajir_puts("Paste a script, then enter @run on its own line.\r\n> ");
+    input_prompt();
 }
 
 static void print_load_error(void)
@@ -84,7 +99,7 @@ static void start_script(void)
     host_register_all();
     if (script_load(g_source, g_length) != 0) {
         print_load_error();
-        yajir_puts("Reset the board to try another script.\r\n");
+        yajir_puts("Press Ctrl+C to clear the input and try again.\r\n");
         return;
     }
 
@@ -109,17 +124,24 @@ static int command_at_line(const char *command)
 void yajir_loader_init(void)
 {
     memset(&g_arena, 0, sizeof(g_arena));
-    memset(g_source, 0, sizeof(g_source));
-    g_length = 0;
-    g_line_start = 0;
-    g_running = 0;
-    g_overflow_reported = 0;
-    g_swallow_lf = 0;
+    reset_input();
     banner();
 }
 
 void yajir_loader_feed_byte(uint8_t byte)
 {
+    if (byte == 0x03u) {
+        int was_running = g_running;
+
+        if (was_running) yajir_glue_stop();
+        reset_input();
+        yajir_puts("\r\n^C\r\n");
+        yajir_puts(was_running ? "[loader] script stopped.\r\n"
+                               : "[loader] input cleared.\r\n");
+        input_prompt();
+        return;
+    }
+
     if (g_swallow_lf && byte == '\n') {
         g_swallow_lf = 0;
         return;

@@ -353,3 +353,15 @@ void yajir_glue_init(bool cyw43_ready)
     if (s_cyw43_ready)
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, false);
 }
+
+void yajir_glue_stop(void)
+{
+    uint32_t all_events = GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL |
+                          GPIO_IRQ_LEVEL_HIGH | GPIO_IRQ_LEVEL_LOW;
+    uint pin;
+
+    for (pin = 0; pin <= 28; ++pin) {
+        if (gpio_is_exposed((int32_t)pin))
+            gpio_set_irq_enabled(pin, all_events, false);
+    }
+}

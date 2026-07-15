@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 void yajir_glue_init(bool cyw43_ready);
+void yajir_glue_stop(void);
 void host_register_all(void);
 
 int32_t get_tick(void);
