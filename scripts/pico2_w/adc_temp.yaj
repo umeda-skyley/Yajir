@@ -1,0 +1,6 @@
+// RP2350 die temperature in degrees Celsius x100.
+// Send @run on a separate line after this script.
+MAIN
+    "ADC_TEMP (C x100): ", ADC_TEMP -> STDOUT
+    1000 -> WAIT
+END

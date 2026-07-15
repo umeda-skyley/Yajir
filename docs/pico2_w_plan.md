@@ -175,7 +175,7 @@ LittleFS等は初期導入しない。まずは独自の固定スロット方式
 | `DELAY` | out | none | `sleep_ms`。ブロッキング |
 | `VMSIZE` | in | int | arenaサイズ |
 | `LED1` | inout | int | Pico 2 WオンボードLED。WL_GPIO0 |
-| `TEMP` | in | int | 内蔵温度。初期は摂氏 x100 など整数化 |
+| `ADC_TEMP` | in | int | 内蔵温度の概算値。摂氏 x100 |
 
 ### GPIO / ADC / PWM
 
@@ -267,7 +267,7 @@ AI APIポートはPico2 W単体ではTLS/メモリ/証明書/レスポンスサ�
 ### Phase 2: 基本GPIO
 
 - `GPIO_GET`, `GPIO_SET`, `GPIO_MODE`, `GPIO_TOGGLE`。
-- `ADC_GET`, `ADC_PIN`, `TEMP`, `PWM_SET`, `PWM_GET`, `PWM_FREQ` の最小実装。
+- `ADC_GET`, `ADC_PIN`, `ADC_TEMP`, `PWM_SET`, `PWM_GET`, `PWM_FREQ` の最小実装。
 - サンプル `scripts/pico2_w/blink.yaj`, `adc_pwm.yaj`。
 
 ### Phase 3: Shell
@@ -293,7 +293,7 @@ AI APIポートはPico2 W単体ではTLS/メモリ/証明書/レスポンスサ�
 ## 未決事項
 
 - Shellの保存形式: 固定スロット方式か、小さなログ構造か。
-- `TEMP` は専用ポートとして扱う。戻り値は摂氏 x100 の int を第一候補にする。
+- `ADC_TEMP` は専用ポートとして扱う。戻り値は摂氏 x100 の int とする。
 - Pico2 WでのPC版 `FILE_READER/FILE_WRITER` 相当を、shell保存領域に接続するか。
 
 ## 非同期ハンドラ方針

@@ -1,0 +1,19 @@
+// Fixed-pin wrapper made with a Yajir script port.
+// Connect an LED and resistor to GPIO15, or inspect the pin with a meter.
+def_port(GPIO15, T_INT)
+
+PORT GPIO15
+    15, ARG[0] -> GPIO_SET
+    15 -> GPIO_GET -> EXIT
+END
+
+INIT
+    15, GPIO_OUT -> GPIO_MODE
+END
+
+MAIN
+    1 -> GPIO15 -> STDOUT
+    500 -> WAIT
+    0 -> GPIO15 -> STDOUT
+    500 -> WAIT
+END

@@ -43,6 +43,7 @@ target_compile_definitions(yajir_pico2_w PRIVATE
 target_link_libraries(yajir_pico2_w
     pico_stdlib
     pico_cyw43_arch_none
+    hardware_adc
     hardware_sync
 )
 

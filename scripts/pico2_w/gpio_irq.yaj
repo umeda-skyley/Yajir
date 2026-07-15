@@ -1,0 +1,14 @@
+// GPIO15 pull-up input. Briefly connect GPIO15 to GND to generate edges.
+INIT
+    15, GPIO_IN_PULLUP -> GPIO_MODE
+    15, GPIO_IRQ_RISE + GPIO_IRQ_FALL -> GPIO_IRQ_ENABLE
+    "GPIO IRQ ready on pin 15" -> STDOUT
+END
+
+MAIN
+    1000 -> WAIT
+END
+
+ON GPIO_IRQ
+    "pin=", ARG[0], " edge=", ARG[1], " value=", ARG[2] -> STDOUT
+END
