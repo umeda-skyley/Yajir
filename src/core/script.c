@@ -103,6 +103,7 @@ static void register_builtins(void)
     script_register_const("ERR_DIVZERO",    ERR_DIVZERO);
     script_register_const("ERR_STR_TRUNC",  ERR_STR_TRUNC);
     script_register_const("ERR_BUDGET",     ERR_BUDGET);   /* REPEAT 打ち切り（§7, v0.4.4） */
+    script_register_const("ERR_DELAY_FULL", ERR_DELAY_FULL); /* 遅延post の pending 満杯（§10, v0.4.7） */
     register_strutils();   /* SLICER/MERGER/COUNTER/FORMATTER/EQUALS/FINDER（§3） */
     register_mathutils();  /* RAND/SEED/CLAMP/MAP/MIN/MAX/ABS（§3, v0.4.3） */
     script_register_out("INVOKER", th_invoker);   /* 動的ディスパッチ（メタ・可変arity, §10） */

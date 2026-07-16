@@ -56,7 +56,8 @@ static const char *const g_builtin_names[] = {
     "SLICER","MERGER","COUNTER","FORMATTER","EQUALS","FINDER","STRTOL",
     "FIELD","UPPER","LOWER","TRIMMER","INVOKER",
     "ERR_QUEUE_OVF","ERR_TIMER_FULL","ERR_DIVZERO","ERR_STR_TRUNC",
-    "WAIT","CLEAR_ERR","HANDLER",
+    "ERR_BUDGET","ERR_DELAY_FULL",
+    "WAIT","CLEAR_ERR","HANDLER","AFTER",
     NULL
 };
 

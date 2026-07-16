@@ -24,7 +24,7 @@
 
 /* Yajir 言語/実装バージョン。スクリプトからは入力ポート VERSION（str産出）で、
  * ホストからは script_version() で読める（§11, v0.4）。 */
-#define SCRIPT_VERSION "0.4.6"
+#define SCRIPT_VERSION "0.4.7"
 
 /* 出力ポートが受け取る値（型タグ付き）。SV_INTは数値、SV_STRは script_str()で文字列に
  * 解決して出力する（v0.4.2でCHARタグ撤去＝値は int/str の2択・§9。数を文字グリフで出すのは
@@ -142,6 +142,8 @@ void script_tick(void);
 #define ERR_DIVZERO    0x04   /* 0除算・0剰余 */
 #define ERR_STR_TRUNC  0x08   /* 文字列バッファ切り詰め */
 #define ERR_BUDGET     0x10   /* REPEAT が命令数バジェットで打ち切られた（§7, v0.4.4） */
+#define ERR_DELAY_FULL 0x20   /* 遅延post の pending 表が満杯で新着を捨てた（§10, v0.4.7）。
+                               * ※満期時にイベントキューが満杯だった場合は既存の ERR_QUEUE_OVF（切り分け可） */
 
 int32_t script_get_status(void);            /* 現在の異常フラグ集合 */
 void    script_clear_status(int32_t bits);  /* 指定ビットを明示クリア */

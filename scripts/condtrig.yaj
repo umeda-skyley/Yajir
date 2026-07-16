@@ -1,0 +1,85 @@
+// condtrig.yaj - 条件トリガ `ON <周期> (条件)` のショーケース（v0.4.7）
+//
+// ここがこのサンプルの主題:
+//   ON <周期> (条件) は「条件が真の間ずっと」ではなく **偽→真になった瞬間に1回だけ** 発火する
+//   （エッジ）。条件が偽に落ちると自動リセットされ、再び真になれば再発火する。
+//   なので「しきい値をまたいだ瞬間」を、**グローバルのフラグを1個も使わずに**拾える。
+//
+//   手で書くとこうなっていたものが、
+//       ON 50
+//           (TEMP > LIMIT) -> IFYES
+//               (ALARMED == 0) -> IFYES
+//                   ...           // ここが本体
+//                   1 -> ALARMED  // フラグを立てる
+//               END
+//           ELSE
+//               0 -> ALARMED      // フラグを落とす
+//           END
+//       END
+//   条件トリガならヘッダ1行で済む:
+//       ON 50 (TEMP > LIMIT)
+//           ...
+//       END
+//
+// 疑似センサ（ランダムウォーク）を v0.4.7 の遅延post で自走させ、その値を2本の条件トリガが
+// 上側・下側から見張る。ALARM の on/off が **またいだ時だけ** 出るのがポイント
+// （レベル判定なら 50ms ごとに延々と出続けてしまう）。
+//
+// PCで試す: build\script.exe run scripts\condtrig.yaj 10
+
+def_alias(TEMP, GVAR[0])
+def_alias(LIMIT,  30)
+
+def_handler(SENSOR)
+
+INIT
+    NOW -> SEED
+    25 -> TEMP
+    "-- conditional trigger (edge) demo --" -> STDOUT
+    none -> SENSOR AFTER 100      // センサ更新チェインを予約して開始（t0起点）
+END
+
+MAIN
+    1000000 -> WAIT               // MAIN は空。センサも判定もイベントで回る
+END
+
+// --- 疑似センサ: 200ms ごとにランダムウォークで温度を上下（遅延postで自走） ---
+ON SENSOR
+    def_local(STEP, VAR[0])
+
+    RAND % 7 - 3 -> STEP          // -3..+3
+    TEMP + STEP -> TEMP
+    TEMP, 20, 40 -> CLAMP -> TEMP // 20..40 に収めて LIMIT(30) 付近を往復させる
+    "  temp=%d", TEMP -> FORMATTER -> STDOUT
+
+    none -> SENSOR AFTER 200
+END
+
+// --- 上側のエッジ: LIMIT を「超えた瞬間」に1回だけ ---
+ON 50 (TEMP > LIMIT)
+    "      *** ALARM ON   (crossed above %d)", LIMIT -> FORMATTER -> STDOUT
+    1 -> LED1
+END
+
+// --- 下側のエッジ: LIMIT 以下に「戻った瞬間」に1回だけ ---
+// 注: 起動時は TEMP=25 で既に真なので、t0 直後の初回ポーリングで1回発火する
+//     （prev はロード時 false ＝ 偽→真 とみなす仕様。§6）
+ON 50 (TEMP <= LIMIT)
+    "      alarm off     (back below %d)", LIMIT -> FORMATTER -> STDOUT
+    0 -> LED1
+END
+
+// --- 応用: 条件トリガはそのままエラーハンドラになる ---
+// STATUS 自体がフラグなので、フラグ変数を用意する必要が無い。
+// 「処理する ＝ clear する ＝ 再武装する」がそのまま噛み合うのがポイント。
+// （エラービットごとに1本書けばエラー別ハンドラになる。ON 10 (STATUS) のような
+//   総括形は、別のビットが立っても STATUS が真のままでエッジが立たず取りこぼすので不可）
+ON 1500
+    "  (deliberately dividing by zero)" -> STDOUT
+    1 / 0 -> GVAR[1]
+END
+
+ON 10 (STATUS & ERR_DIVZERO)
+    "      ! ERR_DIVZERO flagged -> clearing" -> STDOUT
+    ERR_DIVZERO -> CLEAR_ERR
+END

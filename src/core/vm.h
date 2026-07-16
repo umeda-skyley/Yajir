@@ -55,6 +55,12 @@ typedef struct {
     int          handler_port; /* BLK_ON_HANDLER: 対応ポート番号  */
     uint16_t     bc_start;   /* バイトコード開始オフセット       */
     int32_t      next_time;  /* BLK_ON_PERIOD: 次回発火予定tick  */
+    /* ---- 条件トリガ `ON <周期> (条件)`（エッジ, §6 v0.4.7） ----
+     * cond_start: 条件式チャンク（`<式> HALT`・本体より前に置かれる）の開始。0xFFFF=条件なし。
+     * prev: 前回評価の真偽。満期ごとに評価し「prev偽・今回真」でだけ本体を実行、偽で自動リセット。
+     *       ロード時 false ゆえ、t0 後の初回満期で条件が真なら立ち上がりとみなして発火する。 */
+    uint16_t     cond_start;
+    bool         prev;
 } block_t;
 
 /* ---- イベント（§10, v0.3.5 多値）----
@@ -100,6 +106,17 @@ typedef struct {
     int32_t fire_time;   /* この時刻(tick)以降で満期。init_armed時は t0 起点の相対ms（オフセット） */
     bool    init_armed;  /* INITフェーズで張った→締切は t0 起点で解決（v0.3.4, §8） */
 } timer_slot_t;
+
+/* ---- 遅延post の pending スロット（§10, v0.4.7）。`値リスト -> ハンドラ AFTER <ms>`。
+ * payload は post 時にコピーして保持（満期まで元 SVAR が変わっても届く値は post 時のもの）。
+ * 満期時に通常のイベントキューへ enqueue＝以後は普通の post と完全に同一経路。
+ * INITフェーズで張った分は TIMER と同じ作法で t0 起点解決（破棄しない・§10）。 */
+typedef struct {
+    bool    active;
+    bool    init_armed;  /* INITで張った→due は t0 起点の相対ms（transition_to_run で絶対化） */
+    int32_t due;         /* この時刻(tick)以降で満期 */
+    event_t ev;          /* 送るイベント（handler_port と payload を保持）＝RAMの支配項 */
+} delay_slot_t;
 
 /* ---- yield実行コンテキスト（§7 WAIT yield/再開）。
  * INIT/MAIN で共用（INITフェーズではINIT、RUNフェーズではMAINを保持。両者は同時に走らない）。 */
@@ -177,6 +194,10 @@ typedef struct {
     /* タイマ（§8） */
     timer_slot_t timers[CFG_TIMER_SLOTS];
     bool         timer_overflow;
+
+    /* 遅延post の pending 表（§10, v0.4.7）。tick文脈しか触らない（ISRからは触らない）ので
+     * クリティカルセクション不要。満期時に保護済みの evq_push 経路でキューへ流す。 */
+    delay_slot_t delay[CFG_DELAY_SLOTS];
 } script_vm_t;
 
 /* 単一インスタンスへのアクセス（アリーナ上に配置） */

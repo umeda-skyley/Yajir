@@ -74,15 +74,23 @@ static void ev_clear(event_t *ev, event_kind_t kind, int handler_port, int npos)
     for (k = 0; k < CFG_SARG_COUNT; k++) ev->sstr[k][0] = '\0';
 }
 
-/* VMスタック上の値（int/char/文字列参照）から組み立てる（ハンドラ源/単値post共用） */
+/* VMスタック上の値（int/文字列参照）からイベントを組み立てる。文字列はここで sstr へコピーされる
+ * ＝post時スナップショット（遅延post でも満期まで元 SVAR の変化に影響されない, §10 v0.4.7）。 */
+static void build_event_vals(event_t *ev, event_kind_t kind, int handler_port, const value_t *pos, int n)
+{
+    int k;
+    ev_clear(ev, kind, handler_port, n);
+    for (k = 0; k < ev->npos; k++) {
+        if (val_is_str(pos[k])) put_str_pos(ev, k, vm_resolve_str(pos[k]), -1);  /* 解決済み＝終端あり */
+        else                    ev->pos[k] = pos[k];   /* INT */
+    }
+}
+
+/* 組み立てて即キューへ（ハンドラ源/単値post共用） */
 static int push_event_vals(event_kind_t kind, int handler_port, const value_t *pos, int n)
 {
-    event_t ev; int k;
-    ev_clear(&ev, kind, handler_port, n);
-    for (k = 0; k < ev.npos; k++) {
-        if (val_is_str(pos[k])) put_str_pos(&ev, k, vm_resolve_str(pos[k]), -1);  /* 解決済み＝終端あり */
-        else                    ev.pos[k] = pos[k];   /* INT/CHAR */
-    }
+    event_t ev;
+    build_event_vals(&ev, kind, handler_port, pos, n);
     return evq_push(&ev);
 }
 
@@ -123,6 +131,41 @@ int sched_enqueue_handler_vals(int handler_port, const value_t *pos, int n)   /*
     return push_event_vals(EVT_HANDLER, handler_port, pos, n);   /* ON <名前> へ（Cからのpostと同経路） */
 }
 
+/* 遅延post（`値リスト -> ハンドラ AFTER <ms>`, §10 v0.4.7）。pending 表に1枠取って payload を
+ * コピーし、due を張る。満期は sched_tick が拾って通常キューへ流す（以後は普通のpostと同一経路）。
+ *
+ * INIT中でも破棄しない（TIMER の作法）＝スクリプト自身が書いた「予約」だから。橋を閉じる目的は
+ * 外来イベントの t0 スタンピード防止であって、自分で張った予約を消すことではない。INIT中は due を
+ * t0 起点の相対msとして持ち、transition_to_run で絶対時刻へ解決する（vm_arm_timer と同手口）。
+ *
+ * 戻り値: 0=ok / <0=pending満杯（新着ドロップ＋ERR_DELAY_FULL） */
+int sched_post_after(int handler_port, const value_t *pos, int n, int32_t ms)
+{
+    script_vm_t *m = vm();
+    int i;
+    /* RUNフェーズの ms<=0 は即post に縮退（正常な退化・エラーにしない）。
+     * INIT中は縮退させない——即postは橋で破棄されてしまうため、due=0 で張って t0 に発火させる。 */
+    if (m->init_done && ms <= 0) return sched_enqueue_handler_vals(handler_port, pos, n);
+    if (ms < 0) ms = 0;
+
+    for (i = 0; i < CFG_DELAY_SLOTS; i++) {
+        if (!m->delay[i].active) {
+            build_event_vals(&m->delay[i].ev, EVT_HANDLER, handler_port, pos, n);  /* payloadをコピー */
+            m->delay[i].active = true;
+            if (!m->init_done) {                 /* INITフェーズ：t0起点の相対msを仮置き */
+                m->delay[i].due        = ms;
+                m->delay[i].init_armed = true;
+            } else {                             /* RUNフェーズ：post時刻起点 */
+                m->delay[i].due        = vm_now() + ms;
+                m->delay[i].init_armed = false;
+            }
+            return 0;
+        }
+    }
+    vm_set_err(ERR_DELAY_FULL);   /* 満杯：新着を捨てる（§10, §12） */
+    return -1;
+}
+
 /* ---- ブロック検索 ---- */
 static int find_block_kind(block_kind_t k)
 {
@@ -151,6 +194,23 @@ static void run_handler(int bi)
     vm()->call_sp = 0;   /* コールフレームも block ごとにリセット（within-tick 保険, v0.4.5） */
     /* budget切れは暴走ガード（REPEAT は後退辺で打ち切り＝ERR_BUDGET, §7 v0.4.4）。 */
     vm_exec(&pc, &budget, &ms, /*in_main=*/false);
+}
+
+/* 条件トリガの条件式を評価する（§6, v0.4.7）。条件チャンクは `<式> HALT` の独立コードなので、
+ * ここから実行して HALT で止まり、スタック先頭に値が1つ残る。それを真偽として読むだけ
+ * （＝専用opcodeを持たずに式を評価できる）。条件は純粋式で WAIT を含めないので yield しない。 */
+static int eval_cond(const block_t *b)
+{
+    script_vm_t *m = vm();
+    uint16_t pc = b->cond_start;
+    int budget = CFG_INSTR_BUDGET;
+    int32_t ms = 0;
+    int r;
+    m->sp = 0; m->loop_sp = 0; m->call_sp = 0;
+    vm_exec(&pc, &budget, &ms, /*in_main=*/false);
+    r = (m->sp > 0) ? val_truthy(m->stack[0]) : 0;   /* 評価できなければ偽に縮退 */
+    m->sp = 0;
+    return r;
 }
 
 /* ARG[]/SARG[] をイベントで充填（型タグはpost側が決定, §10, v0.3.5）。
@@ -216,6 +276,14 @@ static void transition_to_run(int32_t now)
         if (m->timers[i].active && m->timers[i].init_armed) {
             m->timers[i].fire_time  = now + m->timers[i].fire_time;
             m->timers[i].init_armed = false;
+        }
+
+    /* INITで張った遅延post も同じ作法で t0 起点に解決（§10, v0.4.7）。
+     * これにより「INIT からスクリプト定義ハンドラの起動を予約する」が書ける。 */
+    for (i = 0; i < CFG_DELAY_SLOTS; i++)
+        if (m->delay[i].active && m->delay[i].init_armed) {
+            m->delay[i].due        = now + m->delay[i].due;
+            m->delay[i].init_armed = false;
         }
 
     /* INIT中は橋が閉じていたが、念のためキューを空リセット（§10） */
@@ -291,6 +359,16 @@ void sched_tick(void)
         }
     }
 
+    /* 1.5) 遅延post の満期 → キューへ（§10, v0.4.7）。TIMER と同じ位置で流すので、
+     *      満期した遅延postは下の drain で同tick中にディスパッチされる（通常postと同一経路）。
+     *      キューが満杯なら evq_push が ERR_QUEUE_OVF を立てる（pending満杯の ERR_DELAY_FULL と別）。 */
+    for (i = 0; i < CFG_DELAY_SLOTS; i++) {
+        if (m->delay[i].active && !m->delay[i].init_armed && now >= m->delay[i].due) {
+            m->delay[i].active = false;          /* ワンショット（キャンセル機構は持たない） */
+            evq_push(&m->delay[i].ev);
+        }
+    }
+
     /* 2) キューを drain → ディスパッチ（§10）。TIMER満期もこの経路（§8）。
      *
      * このtick開始時点でキューにある分だけを処理する（境界を先にスナップショット）。
@@ -321,7 +399,25 @@ void sched_tick(void)
         if (b->kind != BLK_ON_PERIOD) continue;
         if (now < b->next_time) continue;
 
-        run_handler(i);                             /* 1 tick につき1回は必ず発火 */
+        if (b->cond_start != 0xFFFF) {
+            /* 条件トリガ（エッジ, §6 v0.4.7）: 満期ごとに条件を評価し「前回偽・今回真」でだけ発火。
+             * 偽になれば prev が落ちて自動リセット＝再成立で再発火する。
+             * 注: 条件付きでは catch-up（取りこぼし消化）は無意味（本質は回数でなくエッジ）。
+             *
+             * prev には「本体が走った後」の条件値を入れる。本体が自分のトリガ条件を落とす場合
+             * （`ON 10 (STATUS & ERR_x)` … `ERR_x -> CLEAR_ERR` のようなフラグ消費型）に、
+             * clear をそのまま再武装として扱うため。走る前の値を入れると、clear 直後・次の満期前に
+             * 条件が再成立したとき prev が true のままとなり、以後永久に発火しなくなる。
+             * 再評価は発火したときだけ＝エッジは稀なのでコストは無視できる。 */
+            int cond = eval_cond(b);
+            if (cond && !b->prev) {
+                run_handler(i);
+                cond = eval_cond(b);   /* 本体が条件を落としたかを見る（落ちていれば即再武装） */
+            }
+            b->prev = (bool)cond;
+        } else {
+            run_handler(i);                         /* 1 tick につき1回は必ず発火 */
+        }
         if (b->period <= 0) {
             b->next_time = now + 1;                 /* 0周期の退避（無限ループ防止） */
             continue;
