@@ -1,0 +1,125 @@
+// USB serial Morse blinker for the Pico 2 W onboard LED.
+// Type an alphabetic line and press Enter. Ctrl+C returns to the loader.
+// Timing: dot=1 unit, dash=3, letter gap=3, word gap=7.
+
+def_alias(INPUT_LINE,      SGVAR[0])
+def_alias(PENDING_LINE,    SGVAR[1])
+def_alias(ACTIVE_LINE,     SGVAR[2])
+def_alias(CURRENT_CODE,    SGVAR[3])
+
+def_alias(LINE_READY,      GVAR[0])
+def_alias(TRANSMITTING,    GVAR[1])
+def_alias(LETTER_INDEX,    GVAR[2])
+def_alias(SYMBOL_INDEX,    GVAR[3])
+def_alias(UNIT_MS,         GVAR[4])
+
+def_alias(ALPHABET, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+def_alias(MORSE_TABLE, ".- -... -.-. -.. . ..-. --. .... .. .--- -.- .-.. -- -. --- .--. --.- .-. ... - ..- ...- .-- -..- -.-- --..")
+
+INIT
+    "" -> INPUT_LINE
+    "" -> PENDING_LINE
+    "" -> ACTIVE_LINE
+    "" -> CURRENT_CODE
+    120 -> UNIT_MS
+    "Type A-Z and press Enter." -> STDOUT
+END
+
+MAIN
+    def_local(LINE_LENGTH,    VAR[0])
+    def_local(LETTER_POSITION, VAR[1])
+    def_local(CODE_LENGTH,     VAR[2])
+    def_local(LETTER,          SVAR[0])
+
+    TRANSMITTING -> IFYES
+        CURRENT_CODE -> COUNTER -> CODE_LENGTH
+        CODE_LENGTH -> IFYES
+            // Emit one dot or dash from the current letter.
+            (SYMBOL_INDEX <= CODE_LENGTH) -> IFYES
+                CURRENT_CODE, SYMBOL_INDEX, 1 -> SLICER -> LETTER
+                1 -> LED1
+                ".", LETTER -> EQUALS -> IFYES
+                    UNIT_MS -> WAIT
+                ELSE
+                    UNIT_MS * 3 -> WAIT
+                END
+                0 -> LED1
+                SYMBOL_INDEX + 1 -> SYMBOL_INDEX
+                UNIT_MS -> WAIT
+            ELSE
+                // The final intra-symbol gap plus this wait makes 3 units.
+                "" -> CURRENT_CODE
+                1 -> SYMBOL_INDEX
+                LETTER_INDEX + 1 -> LETTER_INDEX
+                UNIT_MS * 2 -> WAIT
+            END
+        ELSE
+            ACTIVE_LINE -> COUNTER -> LINE_LENGTH
+            (LETTER_INDEX > LINE_LENGTH) -> IFYES
+                0 -> LED1
+                0 -> TRANSMITTING
+                0 -> LETTER_INDEX
+                "[morse] done" -> STDOUT
+            ELSE
+                ACTIVE_LINE, LETTER_INDEX, 1 -> SLICER -> LETTER
+                " ", LETTER -> EQUALS -> IFYES
+                    // A completed letter already supplied 3 off-units.
+                    LETTER_INDEX + 1 -> LETTER_INDEX
+                    UNIT_MS * 4 -> WAIT
+                ELSE
+                    ALPHABET, LETTER -> FINDER -> LETTER_POSITION
+                    (LETTER_POSITION > 0) -> IFYES
+                        MORSE_TABLE, LETTER_POSITION -> FIELD -> CURRENT_CODE
+                        1 -> SYMBOL_INDEX
+                    ELSE
+                        // Ignore non-alphabetic characters.
+                        LETTER_INDEX + 1 -> LETTER_INDEX
+                    END
+                END
+            END
+        END
+    ELSE
+        LINE_READY -> IFYES
+            PENDING_LINE -> ACTIVE_LINE
+            "" -> PENDING_LINE
+            0 -> LINE_READY
+            1 -> TRANSMITTING
+            1 -> LETTER_INDEX
+            1 -> SYMBOL_INDEX
+            "Morse: ", ACTIVE_LINE -> STDOUT
+        ELSE
+            20 -> WAIT
+        END
+    END
+END
+
+ON USB_SERIAL
+    def_local(BYTE,         ARG[0])
+    def_local(INPUT_LENGTH, VAR[0])
+    def_local(INPUT_CHAR,   SVAR[0])
+
+    // Ignore CR. LF completes the line on both CRLF and LF terminals.
+    (BYTE == 13) -> IFYES
+        EXIT
+    END
+    (BYTE == 10) -> IFYES
+        INPUT_LINE -> COUNTER -> IFYES
+            INPUT_LINE -> UPPER -> PENDING_LINE
+            1 -> LINE_READY
+        END
+        "" -> INPUT_LINE
+        EXIT
+    END
+
+    // Backspace and Delete edit the line before Enter.
+    ((BYTE == 8) | (BYTE == 127)) -> IFYES
+        INPUT_LINE -> COUNTER -> INPUT_LENGTH
+        (INPUT_LENGTH > 0) -> IFYES
+            INPUT_LINE, 1, INPUT_LENGTH - 1 -> SLICER -> INPUT_LINE
+        END
+        EXIT
+    END
+
+    BYTE -> CHR -> INPUT_CHAR
+    INPUT_LINE, INPUT_CHAR -> MERGER -> INPUT_LINE
+END

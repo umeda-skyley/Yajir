@@ -1,0 +1,166 @@
+// Event-driven USB serial Morse blinker for the Pico 2 W onboard LED.
+// Type an alphabetic line and press Enter. Ctrl+C returns to the loader.
+// Timing: dot=1 unit, dash=3, symbol gap=1, letter gap=3, word gap=7.
+//
+// Unlike usb_morse.yaj, timing is advanced by handlers that post the next
+// event to themselves. USB input received while transmitting is ignored.
+
+def_alias(INPUT_LINE,   SGVAR[0])
+def_alias(ACTIVE_LINE,  SGVAR[1])
+def_alias(LETTER_INDEX, GVAR[0])
+def_alias(MORSE_STATE,  GVAR[1])
+
+def_alias(S_IDLE,          0)
+def_alias(S_WAIT_HANDLER,  1)
+def_alias(S_GO_NEXT,       2)
+def_alias(S_FINALIZE,      3)
+
+def_alias(UNIT_MS, 120)
+def_alias(ALPHABET, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+def_alias(MORSE_TABLE, ".- -... -.-. -.. . ..-. --. .... .. .--- -.- .-.. -- -. --- .--. --.- .-. ... - ..- ...- .-- -..- -.-- --..")
+
+def_handler(MORSE_SYMBOL)
+def_handler(MORSE_GAP)
+
+INIT
+    "" -> INPUT_LINE
+    "" -> ACTIVE_LINE
+    0 -> LETTER_INDEX
+    S_IDLE -> MORSE_STATE
+    "Type A-Z and press Enter." -> STDOUT
+END
+
+MAIN
+    def_local(LINE_LENGTH,     VAR[0])
+    def_local(LETTER_POSITION, VAR[1])
+    def_local(LETTER,          SVAR[0])
+    def_local(CURRENT_CODE,    SVAR[1])
+
+    (MORSE_STATE == S_FINALIZE) -> IFYES
+        0 -> LETTER_INDEX
+        "" -> ACTIVE_LINE
+        S_IDLE -> MORSE_STATE
+    END
+
+    (MORSE_STATE == S_GO_NEXT) -> IFYES
+        LETTER_INDEX + 1 -> LETTER_INDEX
+        ACTIVE_LINE -> COUNTER -> LINE_LENGTH
+
+        (LETTER_INDEX > LINE_LENGTH) -> IFYES
+            "[morse] done" -> STDOUT
+            S_FINALIZE -> MORSE_STATE
+        ELSE
+            ACTIVE_LINE, LETTER_INDEX, 1 -> SLICER -> LETTER
+            ALPHABET, LETTER -> FINDER -> LETTER_POSITION
+
+            (LETTER_POSITION > 0) -> IFYES
+                MORSE_TABLE, LETTER_POSITION -> FIELD -> CURRENT_CODE
+                CURRENT_CODE, 1, NOW -> MORSE_SYMBOL
+                S_WAIT_HANDLER -> MORSE_STATE
+            ELSE
+                " ", LETTER -> EQUALS -> IFYES
+                    // The preceding letter already supplied 3 off-units.
+                    // Add 4 more to make the 7-unit word gap.
+                    "-", 2, NOW, 4 -> MORSE_GAP
+                    S_WAIT_HANDLER -> MORSE_STATE
+                ELSE
+                    // Skip unsupported characters without stopping the line.
+                    S_GO_NEXT -> MORSE_STATE
+                END
+            END
+        END
+    END
+
+    10 -> WAIT
+END
+
+// Args: Morse code, symbol position, tone start time.
+ON MORSE_SYMBOL
+    def_local(CODE,         SARG[0])
+    def_local(POSITION,     ARG[1])
+    def_local(START_TIME,   ARG[2])
+    def_local(CURRENT_CHAR, SVAR[0])
+    def_local(CODE_LENGTH,  VAR[0])
+    def_local(TONE_TIME,    VAR[1])
+
+    CODE -> COUNTER -> CODE_LENGTH
+    ((CODE_LENGTH == 0) | (POSITION > CODE_LENGTH)) -> IFYES
+        S_GO_NEXT -> MORSE_STATE
+        EXIT
+    END
+
+    CODE, POSITION, 1 -> SLICER -> CURRENT_CHAR
+    CURRENT_CHAR, "." -> EQUALS -> IFYES
+        UNIT_MS -> TONE_TIME
+    ELSE
+        UNIT_MS * 3 -> TONE_TIME
+    END
+
+    (NOW - START_TIME < TONE_TIME) -> IFYES
+        1 -> LED1
+        CODE, POSITION, START_TIME -> MORSE_SYMBOL
+        EXIT
+    END
+
+    0 -> LED1
+    (POSITION < CODE_LENGTH) -> IFYES
+        CODE, POSITION + 1, NOW, 1 -> MORSE_GAP
+    ELSE
+        CODE, POSITION + 1, NOW, 3 -> MORSE_GAP
+    END
+END
+
+// Args: Morse code, next symbol position, gap start time, gap units.
+ON MORSE_GAP
+    def_local(CODE,       SARG[0])
+    def_local(POSITION,   ARG[1])
+    def_local(START_TIME, ARG[2])
+    def_local(GAP_UNITS,  ARG[3])
+    def_local(GAP_TIME,   VAR[0])
+
+    UNIT_MS * GAP_UNITS -> GAP_TIME
+    (NOW - START_TIME < GAP_TIME) -> IFYES
+        CODE, POSITION, START_TIME, GAP_UNITS -> MORSE_GAP
+        EXIT
+    END
+
+    CODE, POSITION, NOW -> MORSE_SYMBOL
+END
+
+ON USB_SERIAL
+    def_local(BYTE,         ARG[0])
+    def_local(INPUT_LENGTH, VAR[0])
+    def_local(INPUT_CHAR,   SVAR[0])
+
+    // Keep the showcase simple: accept a new line only while idle.
+    (MORSE_STATE != S_IDLE) -> IFYES
+        EXIT
+    END
+
+    // Ignore CR. LF completes the line on both CRLF and LF terminals.
+    (BYTE == 13) -> IFYES
+        EXIT
+    END
+    (BYTE == 10) -> IFYES
+        INPUT_LINE -> COUNTER -> INPUT_LENGTH
+        (INPUT_LENGTH > 0) -> IFYES
+            INPUT_LINE -> UPPER -> ACTIVE_LINE
+            "" -> INPUT_LINE
+            "Morse: ", ACTIVE_LINE -> STDOUT
+            S_GO_NEXT -> MORSE_STATE
+        END
+        EXIT
+    END
+
+    // Backspace and Delete edit the line before Enter.
+    ((BYTE == 8) | (BYTE == 127)) -> IFYES
+        INPUT_LINE -> COUNTER -> INPUT_LENGTH
+        (INPUT_LENGTH > 0) -> IFYES
+            INPUT_LINE, 1, INPUT_LENGTH - 1 -> SLICER -> INPUT_LINE
+        END
+        EXIT
+    END
+
+    BYTE -> CHR -> INPUT_CHAR
+    INPUT_LINE, INPUT_CHAR -> MERGER -> INPUT_LINE
+END

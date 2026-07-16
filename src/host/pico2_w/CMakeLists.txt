@@ -44,6 +44,8 @@ target_link_libraries(yajir_pico2_w
     pico_stdlib
     pico_cyw43_arch_none
     hardware_adc
+    hardware_clocks
+    hardware_pwm
     hardware_sync
 )
 
