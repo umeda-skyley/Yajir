@@ -1,5 +1,5 @@
-// PWM fade on GPIO15. Connect an LED in series with a resistor.
-// Ctrl+C stops PWM and returns the pin to Low.
+// GPIO15のPWMでLEDをフェードさせます。LEDには抵抗を直列に接続してください。
+// Ctrl+CでPWMを停止し、ピンをLowへ戻します。
 
 def_alias(PWM_PIN, 15)
 def_alias(PWM_STEP, 4096)

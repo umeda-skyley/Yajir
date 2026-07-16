@@ -1,22 +1,22 @@
-// Event-driven USB serial Morse blinker. MAIN parks: everything self-drives.
-// Type an alphabetic line and press Enter. Ctrl+C returns to the loader.
-// Timing: dot=1 unit, dash=3, symbol gap=1, letter gap=3, word gap=7.
+// USBシリアル入力をLEDでモールス送信するイベント駆動サンプルです。
+// 英字を入力してEnterを押してください。Ctrl+Cでローダーへ戻ります。
+// タイミングは短点=1単位、長点=3単位、符号間=1単位、文字間=3単位、単語間=7単位です。
 //
-// Design: no MAIN state machine, no polling. Each handler schedules its own
-// continuation with `-> HANDLER AFTER <ms>`, so the whole transmission is one
-// self-propelled event chain. State that changes per step (letter index, symbol
-// position, on/off phase) rides in the arguments; only what must outlive the
-// chain stays global.
+// 設計上、MAINの状態機械もポーリングも使いません。各ハンドラが
+// `-> HANDLER AFTER <ms>`で次の処理を予約し、送信全体を自己駆動する
+// 1本のイベントチェインにします。文字位置、符号位置、点灯・消灯状態など
+// ステップごとに変わる状態は引数で運び、チェインより長く生存する値だけを
+// グローバルに保持します。
 //
-//   ON USB_SERIAL   line editor. Enter starts the chain.
-//   ON MORSE_LETTER (index)                     pick letter #index, start its code
-//   ON MORSE_SYMBOL (code, pos, on_off, index)  key the LED, then reschedule
+//   ON USB_SERIAL   入力行を編集し、Enterでチェインを開始
+//   ON MORSE_LETTER (index)                     index番目の文字を選び、符号を開始
+//   ON MORSE_SYMBOL (code, pos, on_off, index)  LEDを操作し、次の処理を予約
 //
-// Why ACTIVE_LINE stays global: MORSE_SYMBOL already uses all 4 argument
-// positions (code, pos, on_off, index). Carrying the line too would overflow
-// ARG, and would re-copy the whole string on every 120ms hop for nothing.
-// BUSY stays global for one reason only: USB_SERIAL must know to ignore input
-// while a line is being sent.
+// ACTIVE_LINEをグローバルにする理由は、MORSE_SYMBOLが4つの引数位置を
+// code、pos、on_off、indexで使い切るためです。入力行まで引数で運ぶとARGが
+// 足りず、120msごとに文字列全体を無駄にコピーすることにもなります。
+// BUSYをグローバルにする理由は、送信中の入力を無視する必要があることを
+// USB_SERIALへ知らせるためだけです。
 
 def_alias(INPUT_LINE,  SGVAR[0])
 def_alias(ACTIVE_LINE, SGVAR[1])
@@ -37,10 +37,10 @@ INIT
 END
 
 MAIN
-    1000000 -> WAIT           // park MAIN; handlers and delayed posts keep running
+    1000000 -> WAIT           // MAINだけを休止し、ハンドラと遅延postは動かし続けます
 END
 
-// --- letter loop: pick letter #INDEX of ACTIVE_LINE and start its code ---
+// --- 文字ループ: ACTIVE_LINEのINDEX番目を選び、その符号を開始します ---
 ON MORSE_LETTER
     def_local(INDEX,  ARG[0])
     def_local(LEN,    VAR[0])
@@ -49,32 +49,32 @@ ON MORSE_LETTER
     def_local(CODE,   SVAR[1])
 
     ACTIVE_LINE -> COUNTER -> LEN
-    (INDEX > LEN) -> IFYES                    // line finished
+    (INDEX > LEN) -> IFYES                    // 入力行の送信完了
         "[morse] done" -> STDOUT
         "" -> ACTIVE_LINE
-        0 -> BUSY                             // re-arm USB_SERIAL
+        0 -> BUSY                             // USB_SERIALの入力受付を再開
         EXIT
     END
 
     ACTIVE_LINE, INDEX, 1 -> SLICER -> LETTER
     ALPHABET, LETTER -> FINDER -> POS
 
-    (POS > 0) -> IFYES                        // A-Z: send its code, starting now
+    (POS > 0) -> IFYES                        // A-Zなら対応する符号を送信開始
         MORSE_TABLE, POS -> FIELD -> CODE
         CODE, 1, 1, INDEX -> MORSE_SYMBOL
         EXIT
     END
 
-    " ", LETTER -> EQUALS -> IFYES            // word gap
-        // The previous letter already supplied 3 off-units. Add 4 -> 7 total.
+    " ", LETTER -> EQUALS -> IFYES            // 単語間隔
+        // 直前の文字で3単位消灯済みなので、4単位を足して合計7単位にします。
         INDEX + 1 -> MORSE_LETTER AFTER UNIT_MS * 4
         EXIT
     END
 
-    INDEX + 1 -> MORSE_LETTER                 // skip unsupported char, no delay
+    INDEX + 1 -> MORSE_LETTER                 // 未対応文字は待たずに読み飛ばします
 END
 
-// --- symbol loop: ON_OFF=1 keys the LED, ON_OFF=0 releases it and spaces ---
+// --- 符号ループ: ON_OFF=1で点灯、ON_OFF=0で消灯して間隔を作ります ---
 ON MORSE_SYMBOL
     def_local(CODE,   SARG[0])
     def_local(POS,    ARG[1])
@@ -85,12 +85,12 @@ ON MORSE_SYMBOL
     def_local(CH,     SVAR[0])
 
     CODE -> COUNTER -> LEN
-    (POS > LEN) -> IFYES                      // code finished (letter gap already waited)
+    (POS > LEN) -> IFYES                      // 符号完了（文字間隔も待機済み）
         INDEX + 1 -> MORSE_LETTER
         EXIT
     END
 
-    (ON_OFF == 1) -> IFYES                    // key down for dot(1) or dash(3)
+    (ON_OFF == 1) -> IFYES                    // 短点は1単位、長点は3単位点灯
         CODE, POS, 1 -> SLICER -> CH
         CH, "." -> EQUALS -> IFYES
             UNIT_MS -> TIME
@@ -102,11 +102,11 @@ ON MORSE_SYMBOL
         EXIT
     END
 
-    0 -> LED1                                 // key up, then space
+    0 -> LED1                                 // 消灯して間隔を作ります
     (POS < LEN) -> IFYES
-        UNIT_MS -> TIME                       // symbol gap = 1
+        UNIT_MS -> TIME                       // 符号間隔は1単位
     ELSE
-        UNIT_MS * 3 -> TIME                   // letter gap = 3
+        UNIT_MS * 3 -> TIME                   // 文字間隔は3単位
     END
     CODE, POS + 1, 1, INDEX -> MORSE_SYMBOL AFTER TIME
 END
@@ -116,11 +116,11 @@ ON USB_SERIAL
     def_local(INPUT_LENGTH, VAR[0])
     def_local(INPUT_CHAR,   SVAR[0])
 
-    (BUSY != 0) -> IFYES                      // ignore input while transmitting
+    (BUSY != 0) -> IFYES                      // 送信中の入力は無視します
         EXIT
     END
 
-    // CR or LF completes the line. The second byte of CRLF is ignored.
+    // CRまたはLFで入力を確定します。CRLFの2文字目は無視します。
     ((BYTE == 13) | (BYTE == 10)) -> IFYES
         INPUT_LINE -> COUNTER -> INPUT_LENGTH
         (INPUT_LENGTH > 0) -> IFYES
@@ -128,12 +128,12 @@ ON USB_SERIAL
             "" -> INPUT_LINE
             1 -> BUSY
             "Morse: ", ACTIVE_LINE -> STDOUT
-            1 -> MORSE_LETTER                 // start the chain
+            1 -> MORSE_LETTER                 // イベントチェインを開始します
         END
         EXIT
     END
 
-    // Backspace and Delete edit the line before Enter.
+    // Enter前ならBackspaceまたはDeleteで入力行を編集できます。
     ((BYTE == 8) | (BYTE == 127)) -> IFYES
         INPUT_LINE -> COUNTER -> INPUT_LENGTH
         (INPUT_LENGTH > 0) -> IFYES

@@ -1,4 +1,4 @@
-// Pico 2 W onboard LED blink. Send @run on a separate line after this script.
+// Pico 2 WのオンボードLEDを点滅させます。このスクリプトに続けて、別の行で@runを送信してください。
 MAIN
     1 -> LED1
     500 -> WAIT

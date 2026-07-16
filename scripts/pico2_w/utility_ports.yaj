@@ -1,11 +1,11 @@
-// Utility ports implemented entirely in Yajir.
-// An underscore marks the side where an arrow connects:
-//   GPIO26_  -> value        input
-//   value -> _GPIO26         output
-//   value -> _GPIO26_ -> ... in/out chain
-// Connect a passive piezo buzzer between GPIO15 and GND.
-// _MOTOR requires an external motor driver. Never connect a motor directly
-// to a GPIO pin. PWM=GPIO16, DIR=GPIO17, with a shared ground.
+// Yajirだけで実装したユーティリティポートです。
+// アンダースコアは矢印を接続できる側を表します。
+//   GPIO26_  -> value        入力
+//   value -> _GPIO26         出力
+//   value -> _GPIO26_ -> ... 入出力チェイン
+// パッシブ圧電ブザーはGPIO15とGNDの間へ接続してください。
+// _MOTORには外部モータードライバが必要です。モーターをGPIOへ直接接続しないでください。
+// PWM=GPIO16、DIR=GPIO17とし、GNDを共通にします。
 
 def_port(GPIO26_,  T_INT)
 def_port(_GPIO26,  T_INT)
@@ -34,7 +34,7 @@ PORT _GPIO26_
     26 -> GPIO_GET -> EXIT
 END
 
-// Signed motor speed: -100..100. Zero stops PWM.
+// 符号付きモーター速度は-100から100です。0でPWMを停止します。
 PORT _MOTOR
     def_local(SPEED, VAR[0])
     def_local(DUTY,  VAR[1])
@@ -43,7 +43,7 @@ PORT _MOTOR
     SPEED -> ABS -> DUTY
     DUTY, 0, 100, 0, PWM_MAX -> MAP -> DUTY
 
-    // Remove drive before changing direction.
+    // 回転方向を変える前に駆動を停止します。
     MOTOR_PWM_PIN, 0 -> PWM_SET
     MOTOR_DIR_PIN, GPIO_OUT -> GPIO_MODE
 
@@ -115,8 +115,8 @@ INIT
     500 -> WAIT
     0 -> _BUZZAR
 
-    // Motor examples are intentionally not run automatically:
-    //  50 -> _MOTOR   // forward at 50 percent
-    // -30 -> _MOTOR   // reverse at 30 percent
-    //   0 -> _MOTOR   // stop
+    // モーターの例は安全のため自動実行しません。
+    //  50 -> _MOTOR   // 50パーセントで正転
+    // -30 -> _MOTOR   // 30パーセントで逆転
+    //   0 -> _MOTOR   // 停止
 END

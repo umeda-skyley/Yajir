@@ -1,6 +1,6 @@
-// USB serial Morse blinker for the Pico 2 W onboard LED.
-// Type an alphabetic line and press Enter. Ctrl+C returns to the loader.
-// Timing: dot=1 unit, dash=3, letter gap=3, word gap=7.
+// USBシリアルから入力した文字列を、Pico 2 WのオンボードLEDでモールス送信します。
+// 英字を入力してEnterを押してください。Ctrl+Cでローダーへ戻ります。
+// タイミングは短点=1単位、長点=3単位、文字間=3単位、単語間=7単位です。
 
 def_alias(INPUT_LINE,      SGVAR[0])
 def_alias(PENDING_LINE,    SGVAR[1])
@@ -34,7 +34,7 @@ MAIN
     TRANSMITTING -> IFYES
         CURRENT_CODE -> COUNTER -> CODE_LENGTH
         CODE_LENGTH -> IFYES
-            // Emit one dot or dash from the current letter.
+            // 現在の文字から短点または長点を1つ出力します。
             (SYMBOL_INDEX <= CODE_LENGTH) -> IFYES
                 CURRENT_CODE, SYMBOL_INDEX, 1 -> SLICER -> LETTER
                 1 -> LED1
@@ -47,7 +47,7 @@ MAIN
                 SYMBOL_INDEX + 1 -> SYMBOL_INDEX
                 UNIT_MS -> WAIT
             ELSE
-                // The final intra-symbol gap plus this wait makes 3 units.
+                // 最後の符号間隔とこの待機を合わせて、文字間を3単位にします。
                 "" -> CURRENT_CODE
                 1 -> SYMBOL_INDEX
                 LETTER_INDEX + 1 -> LETTER_INDEX
@@ -63,7 +63,7 @@ MAIN
             ELSE
                 ACTIVE_LINE, LETTER_INDEX, 1 -> SLICER -> LETTER
                 " ", LETTER -> EQUALS -> IFYES
-                    // A completed letter already supplied 3 off-units.
+                    // 直前の文字で既に3単位の消灯時間を確保しています。
                     LETTER_INDEX + 1 -> LETTER_INDEX
                     UNIT_MS * 4 -> WAIT
                 ELSE
@@ -72,7 +72,7 @@ MAIN
                         MORSE_TABLE, LETTER_POSITION -> FIELD -> CURRENT_CODE
                         1 -> SYMBOL_INDEX
                     ELSE
-                        // Ignore non-alphabetic characters.
+                        // 英字以外の文字は無視します。
                         LETTER_INDEX + 1 -> LETTER_INDEX
                     END
                 END
@@ -98,7 +98,7 @@ ON USB_SERIAL
     def_local(INPUT_LENGTH, VAR[0])
     def_local(INPUT_CHAR,   SVAR[0])
 
-    // CR or LF completes the line. The second byte of CRLF sees an empty line.
+    // CRまたはLFで入力を確定します。CRLFの2文字目では入力行が空なので何もしません。
     ((BYTE == 13) | (BYTE == 10)) -> IFYES
         INPUT_LINE -> COUNTER -> IFYES
             INPUT_LINE -> UPPER -> PENDING_LINE
@@ -108,7 +108,7 @@ ON USB_SERIAL
         EXIT
     END
 
-    // Backspace and Delete edit the line before Enter.
+    // Enter前ならBackspaceまたはDeleteで入力行を編集できます。
     ((BYTE == 8) | (BYTE == 127)) -> IFYES
         INPUT_LINE -> COUNTER -> INPUT_LENGTH
         (INPUT_LENGTH > 0) -> IFYES

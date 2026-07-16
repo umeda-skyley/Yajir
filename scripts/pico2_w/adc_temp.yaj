@@ -1,5 +1,5 @@
-// RP2350 die temperature in degrees Celsius x100.
-// Send @run on a separate line after this script.
+// RP2350のダイ温度を摂氏の100倍で表示します。
+// このスクリプトに続けて、別の行で@runを送信してください。
 MAIN
     "ADC_TEMP (C x100): ", ADC_TEMP -> STDOUT
     1000 -> WAIT

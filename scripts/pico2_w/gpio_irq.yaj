@@ -1,4 +1,4 @@
-// GPIO15 pull-up input. Briefly connect GPIO15 to GND to generate edges.
+// GPIO15をプルアップ入力にします。GPIO15を一瞬GNDへ接続するとエッジが発生します。
 INIT
     15, GPIO_IN_PULLUP -> GPIO_MODE
     15, GPIO_IRQ_RISE + GPIO_IRQ_FALL -> GPIO_IRQ_ENABLE

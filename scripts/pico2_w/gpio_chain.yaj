@@ -1,5 +1,5 @@
-// Fixed-pin wrapper made with a Yajir script port.
-// Connect an LED and resistor to GPIO15, or inspect the pin with a meter.
+// Yajirのスクリプト内ポートで作る、固定GPIOピンのラッパーです。
+// GPIO15へLEDと抵抗を接続するか、テスターでピンの状態を確認してください。
 def_port(GPIO15, T_INT)
 
 PORT GPIO15
