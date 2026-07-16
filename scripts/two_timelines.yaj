@@ -1,0 +1,67 @@
+// two_timelines.yaj - 遅延post `AFTER` で「独立した時間軸」を2本同時に回す（v0.4.7）
+//
+// ここがこのサンプルの主題:
+//   MAIN の中で WAIT を刻んで時間を作ると、時間軸は **1本しか持てない**（MAIN は1つしかない）。
+//   遅延post なら、各ハンドラが「自分を N ms 後に予約」して自走するので、
+//   **独立した時間軸を好きなだけ並べられる**。しかも WAIT はハンドラで使えないので、
+//   イベント駆動の世界で時間を扱う手段は、これ以外に無い。
+//
+//   タイムライン1: LED を 100〜500ms の**ランダム間隔**でトグル（ずっと自走）
+//   タイムライン2: 詩を 700ms 間隔で1行ずつ朗読（尽きたら終了）
+//
+//   どちらも INIT から予約して開始する（INIT で張った遅延post は t0 起点で解決される）。
+//   MAIN は何もしない——時間はすべてイベントが運ぶ。
+//
+// PCで試す: build\script.exe run scripts\two_timelines.yaj 8
+
+def_handler(BLINK)
+def_handler(RECITE)
+
+def_alias(LED_STATE, GVAR[0])
+
+// The Road Not Taken / Robert Frost (1916, public domain) の第1連。"|" 区切り。
+def_alias(POEM, "Two roads diverged in a yellow wood,|And sorry I could not travel both|And be one traveler, long I stood|And looked down one as far as I could|To where it bent in the undergrowth;")
+
+INIT
+    NOW -> SEED                       // 実行ごとに点滅パターンを変える
+    "-- two independent timelines --" -> STDOUT
+
+    // どちらの時間軸も INIT から「予約」して始動する（t0 起点）
+    none -> BLINK  AFTER 100
+    1    -> RECITE AFTER 400          // 引数=行番号(1始まり)
+END
+
+MAIN
+    1000000 -> WAIT                   // MAIN は空。時間軸はイベントだけで回っている
+END
+
+// --- タイムライン1: ランダム間隔でLEDトグル（自分を予約し続けて自走） ---
+ON BLINK
+    def_local(NEXT, VAR[0])
+
+    (LED_STATE == 0) -> IFYES
+        1 -> LED1
+        1 -> LED_STATE
+    ELSE
+        0 -> LED1
+        0 -> LED_STATE
+    END
+
+    100 + RAND % 401 -> NEXT          // 100..500ms
+    none -> BLINK AFTER NEXT          // 次のトグルを予約＝自走
+END
+
+// --- タイムライン2: 700ms 間隔で1行ずつ朗読（引数で行番号を手渡す） ---
+ON RECITE
+    def_local(INDEX, ARG[0])
+    def_local(LINE,  SVAR[0])
+
+    POEM, "|", INDEX -> FIELD -> LINE
+    "", LINE -> EQUALS -> IFYES       // 行が尽きた＝この時間軸だけ終了
+        "-- fin (LED keeps blinking) --" -> STDOUT
+        EXIT
+    END
+
+    "  %s", LINE -> FORMATTER -> STDOUT
+    INDEX + 1 -> RECITE AFTER 700     // 次の行を予約
+END

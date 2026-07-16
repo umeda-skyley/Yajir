@@ -1,39 +1,37 @@
-// fib.yaj - フィボナッチ数列
+// fib.yaj - フィボナッチ数列（グローバル不使用・自己postと引数だけで完結）
 //
 // Yajir には while / for は無いが、ループ構文は要らない:
-//   - FIBハンドラの自己呼び出しで実現
+//   - FIB ハンドラの自己post で反復する（1 tick に1ステップ・tickを専有しない）
+//   - 状態（残り回数・F(k)・F(k+1)）は GVAR を使わず、**すべて引数で次の自分へ手渡す**
+//     → ハンドラが純粋な関数のように読め、他のスクリプトと状態を共有しない
+//   - def_local で ARG[k] に名前を付ける（このブロック内だけの別名・可読性）
 //
 // 計算は int32 なので F(46)=1,836,311,903 の次で桁あふれする。
 // そこで >1e9 になったら 0,1 に戻して延々ループさせている。
 
 def_handler(FIB)
 
-INIT
-    0 -> GVAR[0]      // a = F(n)
-    1 -> GVAR[1]      // b = F(n+1)
-END
-
 MAIN
-	100 -> FIB
+    100, 0, 1 -> FIB      // n=100 回ぶん、(F(0), F(1)) = (0, 1) から開始
     1000000 -> WAIT
 END
 
 ON FIB
-	(ARG[0] == 0 ) -> IFYES
-		"--- finished ---" -> STDOUT
-		EXIT
-	END
-	
-    (GVAR[0] > 1000000000) -> IFYES   // 桁あふれ直前でリセット
-        "--- restart ---" -> STDOUT
-        0 -> GVAR[0]
-        1 -> GVAR[1]
+    def_local(N, ARG[0])  // 残り回数
+    def_local(A, ARG[1])  // F(k)   ＝ 今回出力する項
+    def_local(B, ARG[2])  // F(k+1) ＝ 次の項
+
+    (N == 0) -> IFYES
+        "--- finished ---" -> STDOUT
+        EXIT
     END
-    
-	"fib: ", GVAR[0] -> STDOUT        // 現在項を出力
-    GVAR[0] + GVAR[1] -> GVAR[2]      // c = a + b （GVAR[2]=一時変数）
-    GVAR[1] -> GVAR[0]                // a = b
-    GVAR[2] -> GVAR[1]                // b = c
-    
-	(ARG[0] - 1) -> FIB
+
+    (A > 1000000000) -> IFYES      // 桁あふれ直前：(0, 1) に戻して継続
+        "--- restart ---" -> STDOUT
+        N - 1, 0, 1 -> FIB
+        EXIT
+    END
+
+    "fib: ", A -> STDOUT           // 現在項
+    N - 1, B, A + B -> FIB         // (n-1, F(k+1), F(k)+F(k+1)) を自分へ手渡す
 END

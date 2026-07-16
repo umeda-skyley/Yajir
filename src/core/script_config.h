@@ -92,6 +92,11 @@
 #ifndef CFG_TIMER_SLOTS
 #define CFG_TIMER_SLOTS     4     /* タイマスロット数（=4目安） */
 #endif
+#ifndef CFG_DELAY_SLOTS
+#define CFG_DELAY_SLOTS     4     /* 遅延post（値 -> ハンドラ AFTER ms）の pending 表（§10, v0.4.7）。
+                                   * 1枠 ≈ event_t + due + flags（既定 ≈180B・SARG_COUNT×SARG_LEN が支配項）。
+                                   * 満杯は新着ドロップ＋ERR_DELAY_FULL。実機で RAM が厳しければ 2 へ。 */
+#endif
 
 /* 周期ON（ON <ms>）が満期を取りこぼしたときの方針（コンパイルオプション, §6）。
  * 仕様の既定は catch-up。ビルド時に /DTS_PERIODIC_CATCHUP=0 を渡せば coalesce に切替。

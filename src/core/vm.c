@@ -375,6 +375,17 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
             break;
         }
 
+        case OP_POST_HANDLER_AFTER: { /* 値リスト -> ハンドラ AFTER <ms>（遅延post, §10 v0.4.7） */
+            uint8_t pi   = code[p++];
+            uint8_t argc = code[p++];
+            int base = m->sp - argc - 1;      /* スタックは [payload×argc, delay]（delay が top） */
+            extern int sched_post_after(int handler_port, const value_t *pos, int n, int32_t ms);
+            if (base < 0) { *pc = ip; return EXEC_ERROR; }
+            sched_post_after(pi, &m->stack[base], argc, m->stack[m->sp - 1].i);
+            m->sp = base;                     /* payload と delay を消費 */
+            break;
+        }
+
         case OP_POP:
             m->sp--;
             break;

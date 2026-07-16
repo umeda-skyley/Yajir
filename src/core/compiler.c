@@ -87,7 +87,7 @@ static int is_reserved_name(const char *n)
     static const char *const kw[] = {
         "RESULT","SRESULT","GVAR","VAR","ARG","SGVAR","SVAR","SARG",
         "none","IFYES","WAIT","TIMER","CLEAR_ERR","NOT","AND","OR",
-        "INIT","MAIN","ON","END","ELSE","EXIT","REPEAT","ITR","PORT", 0
+        "INIT","MAIN","ON","END","ELSE","EXIT","REPEAT","ITR","PORT","AFTER", 0
     };
     int i;
     for (i = 0; kw[i]; i++) if (strcmp(n, kw[i]) == 0) return 1;
@@ -136,6 +136,7 @@ static void expect_newline(void)
 static void end_stmt(int line)
 {
     if (P.cur.type == T_ARROW) fail(line, ERR_BAD_POSITION);   /* この終端は鎖の中間になれない */
+    if (is_kw("AFTER"))        fail(line, ERR_BAD_POSITION);   /* AFTER はハンドラ源宛のみ（§10, v0.4.7） */
     expect_newline();
 }
 static void skip_newlines(void)
@@ -171,6 +172,7 @@ static int add_block(block_kind_t kind)
     b->kind = kind;
     b->bc_start = (uint16_t)here();
     b->handler_port = -1;
+    b->cond_start = 0xFFFF;   /* 条件なし（0 は有効オフセットなので明示, §6 v0.4.7） */
     return m->nblocks++;
 }
 
@@ -717,10 +719,23 @@ static void parse_stmt(void)
     case PK_OUT:
     case PK_INOUT: emit8(OP_CALL_OUT); emit8(pi); emit8(argc); break;
     case PK_SCRIPT: emit8(OP_CALL_SCRIPT); emit8(pi); emit8(argc); record_call_edge(pi); break;  /* サブルーチン呼び・戻り値は捨てる（§3 v0.4.5） */
-    case PK_HANDLER:   emit8(OP_POST_HANDLER); emit8(pi); emit8(argc); break;  /* 名前付きHANDLER（スクリプトから自己/相互post, v0.3.7+） */
+    case PK_HANDLER:
+        /* 遅延post `値リスト -> ハンドラ AFTER <ms>`（§10, v0.4.7）。遅延式はスタック top へ積み、
+         * VM が [payload×argc, delay] の形で受ける。ms<=0 は実行時に即post へ縮退。 */
+        if (is_kw("AFTER")) {
+            int aline = P.cur.line;
+            adv();
+            parse_expr();                 /* 遅延ms（int式・変数/式OK） */
+            need_int(aline);              /* 文字列の遅延は ERR_TYPE_MISMATCH */
+            emit8(OP_POST_HANDLER_AFTER); emit8(pi); emit8(argc);
+            expect_newline();
+            return;
+        }
+        emit8(OP_POST_HANDLER); emit8(pi); emit8(argc); break;  /* 名前付きHANDLER（スクリプトから自己/相互post, v0.3.7+） */
     case PK_IN:    fail_tok(line, ERR_BAD_POSITION, tname);   /* in は右辺に立てられない（値源・受信不可, §3） */
     case PK_CONST: fail_tok(line, ERR_BAD_POSITION, tname);   /* const は右辺に立てられない（値源） */
     }
+    if (is_kw("AFTER")) fail_tok(line, ERR_BAD_POSITION, tname);  /* AFTER はハンドラ源宛のみ（§10, v0.4.7） */
     expect_newline();
 }
 
@@ -762,8 +777,24 @@ static void parse_on_block(void)
     block_kind_t kind;
     int period = 0, handler = -1;
     int line = P.cur.line;
+    int cond_start = -1;
 
-    if (P.cur.type == T_NUMBER) { kind = BLK_ON_PERIOD; period = P.cur.num; adv(); }
+    if (P.cur.type == T_NUMBER) {
+        kind = BLK_ON_PERIOD; period = P.cur.num; adv();
+        /* ON <周期> ( 条件 ) ＝ 条件トリガ（エッジ, §6 v0.4.7）。
+         * 条件式は本体より前に「<式> HALT」の独立チャンクとして吐く。スケジューラは満期ごとに
+         * ここから vm_exec してスタック先頭の真偽を読み、prev偽→今回真 のときだけ本体を走らせる。
+         * インターバル必須＝この形（ON (条件) 単体）は作らないので、判定は T_NUMBER 分岐の中だけ。 */
+        if (P.cur.type == T_LPAREN) {
+            int cline = P.cur.line;
+            adv();
+            cond_start = here();
+            parse_expr();
+            need_int(cline);                  /* 条件は int（str は ERR_TYPE_MISMATCH） */
+            expect(T_RPAREN, "')'");
+            emit8(OP_HALT);                   /* 値をスタックに残して停止＝スケジューラが読む */
+        }
+    }
     else if (P.cur.type == T_IDENT) {
         if (is_kw("TIMER"))   { kind = BLK_ON_TIMER;   adv(); }
         /* ON HANDLER も特別扱いをやめ、下の通常ポート検索（PK_HANDLER→BLK_ON_HANDLER）に吸収 */
@@ -786,10 +817,11 @@ static void parse_on_block(void)
 
     expect_newline();
     {
-        int bi = add_block(kind);
+        int bi = add_block(kind);   /* bc_start = here() ＝ 条件チャンクの直後 */
         int amark;
         vm()->blocks[bi].period   = period;
         vm()->blocks[bi].handler_port = handler;
+        if (cond_start >= 0) vm()->blocks[bi].cond_start = (uint16_t)cond_start;  /* 条件トリガ（v0.4.7） */
         P.yield_ok = 0;   /* ON ハンドラは WAIT 禁止 */
         P.nest = 0;
         P.repeat_depth = 0;
@@ -1041,6 +1073,7 @@ static void reset_program(void)
     m->evq_overflow = false;
     memset(m->timers, 0, sizeof(m->timers));
     m->timer_overflow = false;
+    memset(m->delay, 0, sizeof(m->delay));   /* 遅延post の pending 表（§10, v0.4.7） */
     s_nalias = 0;   /* エイリアス表もロードごとにクリア（v0.3.8） */
 }
 

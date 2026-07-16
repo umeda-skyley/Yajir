@@ -89,6 +89,11 @@ typedef enum {
                             退避）、フレームをpushしてポート本体 bc_start へジャンプ。戻りで ARG/SARG 復帰（HALT） */
     OP_STORE_RESULT,     /* 先頭1値を pop して RESULT へ（値付き EXIT の int 戻り。str は OP_STORE_SSTR SRESULT） */
 
+    /* ---- 遅延post（§10, v0.4.7） ---- */
+    OP_POST_HANDLER_AFTER, /* U8 portidx, U8 argc : 値リスト -> ハンドラ AFTER <ms>。
+                              スタックは [payload×argc, delay] で delay が top。pending 表へ積む
+                              （payload は post 時コピー）。ms<=0 は即post に縮退。満杯は ERR_DELAY_FULL */
+
     OP__COUNT
 } opcode_t;
 
