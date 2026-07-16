@@ -21,6 +21,7 @@ Thumbs.db
 
 # local design notes
 docs/pico2_w_plan.md
+docs/script_spec_v47.md
 docs/script_drive_import_idea.md
 docs/state_machine_idea.md
 
