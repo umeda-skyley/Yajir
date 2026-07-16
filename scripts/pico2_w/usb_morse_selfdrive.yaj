@@ -1,4 +1,4 @@
-// Event-driven USB serial Morse blinker. MAIN is empty: everything self-drives.
+// Event-driven USB serial Morse blinker. MAIN parks: everything self-drives.
 // Type an alphabetic line and press Enter. Ctrl+C returns to the loader.
 // Timing: dot=1 unit, dash=3, symbol gap=1, letter gap=3, word gap=7.
 //
@@ -37,6 +37,7 @@ INIT
 END
 
 MAIN
+    1000000 -> WAIT           // park MAIN; handlers and delayed posts keep running
 END
 
 // --- letter loop: pick letter #INDEX of ACTIVE_LINE and start its code ---
