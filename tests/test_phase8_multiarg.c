@@ -121,7 +121,7 @@ int main(void)
         CHECK((script_get_status() & ERR_STR_TRUNC)!=0, "ERR_STR_TRUNC set on arg truncation");
     }
 
-    /* 6) (int,int,str) RXDATAパターン：位置2の文字列は N_SARG>=3 で SARG[2] に入る */
+    /* 6) (int,int,str) 受信パケット型パターン：位置2の文字列は N_SARG>=3 で SARG[2] に入る */
     {
         const char *src =
             "ON RX\n"

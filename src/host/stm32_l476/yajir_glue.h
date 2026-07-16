@@ -5,7 +5,7 @@
  *
  * ボード割り当て（Nucleo-L476RG 既定）:
  *   - LED1   : PA5  （ユーザLED LD2・緑）
- *   - BUTTON : PC13 （ユーザボタン B1・青, EXTI, アクティブLow）
+ *   - BUTTON : PC13 （ユーザボタン B1・青, EXTI, アクティブLow）→ イベント源 BTN
  *   - UART   : USART2 115200 8N1（ST-LINK 仮想COMポート＝USB経由でTeraTermに繋がる）
  *
  * コアとは register系API でのみ接続し、コアはこのファイルの存在を知らない（§11）。
@@ -20,7 +20,7 @@
  * CubeMX の MX_USART2_UART_Init() 後に1回呼ぶ。 */
 void yajir_glue_init(UART_HandleTypeDef *huart);
 
-/* def_* 行に対応する register_* を一括実行（LED1/BUTTON/STDOUT/DELAY/NOW/UART1）。
+/* def_* 行に対応する register_* を一括実行（LED1/NOW/STDOUT/DELAY ＋ 源 BTN/UART1/MYHANDLER）。
  * script_init() の直後に呼ぶ（ローダがやるので通常は直接呼ばない）。 */
 void host_register_all(void);
 

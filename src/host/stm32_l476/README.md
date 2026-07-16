@@ -13,7 +13,7 @@ Tera Term でスクリプトを貼り付けて実行する、最小構成の実�
 | 機能 | ピン | 備考 |
 |---|---|---|
 | LED1（ポート `LED1`） | **PA5** | ユーザLED LD2（緑） |
-| ボタン（イベント `BTN` / ポート `SW1`） | **PC13** | ユーザボタン B1（青・アクティブLow, EXTI13） |
+| ボタン（イベント `BTN`） | **PC13** | ユーザボタン B1（青・アクティブLow, EXTI13） |
 | UART（`STDOUT` と スクリプト受信） | **USART2** | ST-LINK 仮想COMポート経由でPCへ。**115200 8N1** |
 
 USART2 は Nucleo の ST-LINK に配線済みなので、USBケーブル1本でPCと繋がります（追加配線不要）。
@@ -155,12 +155,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 | 名前 | 種別 | 説明 |
 |---|---|---|
 | `LED1` | inout(int) | PA5。`1 -> LED1` で点灯、`LED1` 読みで現在値 |
-| `SW1` | in(int) | PC13 をポーリング読み（押下で1）。ポーリングしたいとき用 |
 | `NOW` | in(int) | 起動からの経過 ms（`HAL_GetTick`） |
 | `STDOUT` | out | USART2 へ出力 |
 | `DELAY` | out | `ms -> DELAY` でブロッキング遅延（`HAL_Delay`） |
 | `BTN` | handler | ボタン押下イベント（`ON BTN … END`） |
 | `UART1` | handler | 実行開始後の受信1文字（`ON UART1` で `ARG[0]`=文字） |
+| `MYHANDLER` | handler | 自作イベント用の枠。登録済みなので `script_post_msg_v("MYHANDLER", …)` を自分のISR/タスクから呼べばすぐ `ON MYHANDLER` が動く |
 
 組込みポート（`STDOUT` 以外の文字列ユーティリティ等）は core が提供します。
 一覧は [`docs/builtin_ports.md`](../../../docs/builtin_ports.md) を参照。

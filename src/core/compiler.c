@@ -1133,6 +1133,10 @@ int compiler_compile(const char *src, size_t len)
         if (maxdepth > CFG_CALL_NEST) fail(0, ERR_NEST_TOO_DEEP);   /* コールスタック段数の静的検算 */
     }
 
+    /* 内部クロック源の存在を検算（§8, v0.4.8）。sched_tick が毎回 vm_now() を呼ぶので NOW は実質必須。
+     * 未登録なら黙って時間が 0 で止まる（サイレント故障）——ここで明示エラーに変える。 */
+    if (!vm_has_clock()) fail(0, ERR_NO_CLOCK);
+
     /* 実行コンテキスト確定。ロード直後は INITフェーズに入る（v0.3.4）。
      * 中断コンテキスト(main_ctx)はまず INIT を保持し、INIT→RUN 切替で MAIN へ張り替わる。 */
     m->loaded = true;

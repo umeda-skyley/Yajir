@@ -168,6 +168,12 @@ typedef struct {
     port_t  ports[CFG_MAX_PORTS];
     int     nports;
 
+    /* コア昇格した2つのホスト注入点（§11, v0.4.8）。ポート表を名前で引かずここを直参照する。
+     *   now_fn      : 内部クロック（NOW）。vm_now() が O(1) で呼ぶ。未設定なら初回走査でキャッシュ。
+     *   stdout_puts : STDOUT のシンク。出力ポリシー本体はコアの th_stdout_core が持つ。 */
+    in_fn_t  now_fn;
+    void   (*stdout_puts)(const char *s);
+
     /* バイトコードと文字列プール */
     uint8_t code[CFG_CODE_SIZE];
     int     code_len;
@@ -205,8 +211,12 @@ script_vm_t *vm(void);
 
 /* script_init から：アリーナにVMを配置しゼロ初期化。0=ok / <0=不足 */
 int     vm_place_arena(void *arena, size_t size);
-/* スケジューラ/タイマ用の単調クロック（NOWポート経由, §3） */
+/* スケジューラ/タイマ用の単調クロック。now_fn を O(1) で呼ぶ（未設定なら初回だけポート表を
+ * 走査して "NOW" を now_fn にキャッシュ）。源が無ければ 0（§3, §8, v0.4.8）。 */
 int32_t vm_now(void);
+/* クロック源が解決できるか（now_fn or ポート表の "NOW"）。ロード時ガードで使う。副作用として
+ * 見つかれば now_fn にキャッシュする（§8, v0.4.8）。 */
+int     vm_has_clock(void);
 
 /* 実行結果 */
 typedef enum {

@@ -24,6 +24,7 @@ const char *script_strerror(script_err_t code)
         case ERR_BAD_POSITION:   return "bad port position (in on right / out on left / wrong direction)";
         case ERR_TOO_MANY_PORTS: return "too many ports (def_handler/def_port exceeded the port table)";
         case ERR_RECURSION:      return "recursive script port call (cycle)";
+        case ERR_NO_CLOCK:       return "no clock registered (call script_register_now)";
         case ERR_SYNTAX:         return "syntax error";
     }
     return "load error";
@@ -52,6 +53,7 @@ void host_diag_note(const char *n)
  *     式中の打ち間違い（ERR_UNKNOWN_NAME）をここで拾えるようにする。 */
 static const char *const g_builtin_names[] = {
     "GVAR","VAR","ARG","RESULT","SVAR","SGVAR","SARG","SRESULT","STATUS",
+    "NOW","STDOUT",   /* コア昇格したホスト注入点（v0.4.8）。綴り間違い候補もコア builtin 扱い */
     "CODE_USED","STR_USED","VERSION",
     "SLICER","MERGER","COUNTER","FORMATTER","EQUALS","FINDER","STRTOL",
     "FIELD","UPPER","LOWER","TRIMMER","INVOKER",

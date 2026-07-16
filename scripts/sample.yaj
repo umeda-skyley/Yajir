@@ -52,11 +52,19 @@ ON 1000
     END
 END
 
-ON RXDATA
-	ARG[0], " ", ARG[1], " ", SARG[2] -> STDOUT
-	SARG[2] -> SGVAR[0]
+// ボタン押下で設定値を書き換える（PC=TAB キー/3秒ごと自動, 実機=B1 の EXTI）。
+// 上の ON 1000 が次の周期でこれを拾って ON/OFF が入れ替わる。
+ON BTN
+	"BTN-UP", SGVAR[0] -> EQUALS
+	(RESULT) -> IFYES
+		"BTN-DOWN" -> SGVAR[0]
+	ELSE
+		"BTN-UP" -> SGVAR[0]
+	END
 END
 
+// C側から上げる自作イベントの例（PC: m キー → host_fire_myhandler() が post_msg_v。
+// 実機: 自分のISR/タスクから script_post_msg_v("MYHANDLER", …) を呼べば同じ経路で届く）
 ON MYHANDLER
-	"My handler called." -> STDOUT
+	"My handler called. args: ", ARG[0], " ", ARG[1], " ", ARG[2] -> STDOUT
 END

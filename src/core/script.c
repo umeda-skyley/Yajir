@@ -6,6 +6,7 @@
  * ホスト非依存（純C）コア層。
  */
 #include <string.h>
+#include <stdio.h>      /* th_stdout_core の int→10進（snprintf・FORMATTER と同経路, v0.4.8） */
 #include "script.h"
 #include "vm.h"
 #include "strutil.h"
@@ -148,6 +149,35 @@ void script_register_script_port(const char *name, script_type_t out_type)
 {
     port_t *pt = add_port(name, PK_SCRIPT);
     if (pt) { pt->out_type = out_type; pt->bc_start = 0xFFFF; }   /* 本体未定義マーカ（PORTブロックで後埋め） */
+}
+
+/* NOW（内部クロック）: 関数ポインタを直保持して O(1) 化しつつ、PK_IN "NOW" も登録して
+ * スクリプトの NOW -> x を従来どおり読めるようにする（§8, §11, v0.4.8）。 */
+void script_register_now(script_in_fn tick)
+{
+    vm()->now_fn = (in_fn_t)tick;
+    script_register_in("NOW", tick, SCRIPT_T_INT);
+}
+
+/* STDOUT の出力ポリシー本体（コア所有）。ホストが渡したシンク stdout_puts へ各要素を流す。
+ * int は 10進へ（snprintf）、str はそのまま。末尾に \r\n を1回。タグ判定はコアの概念（§9, v0.4.8）。 */
+static void th_stdout_core(int argc, const script_value_t *a)
+{
+    script_vm_t *m = vm();
+    int i; char num[16];
+    if (!m->stdout_puts) return;                      /* 念のため（未登録なら本ポートは存在しない） */
+    for (i = 0; i < argc; i++) {
+        if (script_val_is_str(a[i])) m->stdout_puts(script_resolve_str(a[i]));  /* 文字列定数/スロット */
+        else { snprintf(num, sizeof num, "%d", (int)a[i].i); m->stdout_puts(num); }  /* int→10進（グリフは CHR/FORMATTER %c） */
+    }
+    m->stdout_puts("\r\n");
+}
+
+/* STDOUT: ホストは出力先（シンク）だけを渡す。ループ/タグ判定/int→10進/改行はコアが持つ（§11, v0.4.8）。 */
+void script_register_stdout(script_puts_fn puts_fn)
+{
+    vm()->stdout_puts = puts_fn;
+    script_register_out("STDOUT", th_stdout_core);
 }
 
 /* ---- RESULT（§4） ---- */
