@@ -49,7 +49,7 @@ Pico 2 Wへ書き込みます。
 [autorun] running. USB input is now sent to ON USB_SERIAL.
 ```
 
-ファイルがない場合、16 KiBを超える場合、またはロードに失敗した場合は、
+ファイルがない場合、14 KiBを超える場合、またはロードに失敗した場合は、
 USBシリアルからのスクリプト投入待ちへ戻ります。Yajirは起動時だけ
 `autorun.yaj`を読むため、ドライブ上のファイルを変更した後は再起動が必要です。
 

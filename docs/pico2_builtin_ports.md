@@ -206,6 +206,6 @@ END
 
 ## 現在のメモリ構成
 
-現在のPico 2 W設定では、Yajir core、コンパイラ静的領域、16 KiBのスクリプト受信バッファ、PicoホストのYajir用静的状態を合計して`122,723 bytes`（約`119.85 KiB`）です。
+現在のPico 2 W設定では、Yajir core、コンパイラ静的領域、14 KiBのスクリプト受信バッファ、PicoホストのYajir用静的状態を合計して`129,822 bytes`（約`126.78 KiB`）です。v0.4.7の遅延postは`CFG_DELAY_SLOTS=2`とし、同時に2本まで待機できます。
 
 この値にはPico SDK、CYW43、ヒープ、Cスタックを含みません。

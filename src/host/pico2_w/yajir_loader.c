@@ -9,7 +9,7 @@
 #include "yajir_drive.h"
 #include "yajir_loader.h"
 
-#define SCRIPT_MAX 16384
+#define SCRIPT_MAX 14336
 
 static script_vm_t g_arena;
 static char g_source[SCRIPT_MAX];

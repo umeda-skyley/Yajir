@@ -25,6 +25,7 @@
 /* Each queued event owns CFG_SARG_COUNT string buffers. */
 #define CFG_EVENT_QUEUE_LEN      8
 #define CFG_TIMER_SLOTS         16
+#define CFG_DELAY_SLOTS          2
 #define CFG_CODE_SIZE        16384
 #define CFG_STRPOOL_SIZE      8192
 #define CFG_MAX_NAME            32
