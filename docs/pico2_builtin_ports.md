@@ -19,11 +19,14 @@
 | `STDOUT` | `value... -> STDOUT` | 整数またはUTF-8文字列をUSB serialへ連結して出力し、改行 |
 | `NOW` | `NOW` | 起動後の経過時間をミリ秒で取得 |
 | `DELAY` | `ms -> DELAY` | 指定時間だけホスト処理をブロッキング |
+| `SLEEP` | `ms -> SLEEP` | 最大`ms`のSleep。タイマーまたは任意の有効IRQで復帰 |
 | `VMSIZE` | `VMSIZE` | 現在のPico設定におけるVM arenaサイズをbyte単位で取得 |
 
 `LED1`はCYW43チップ経由で制御されるオンボードLEDです。RP2350のGPIO PWM出力ではないため、`PWM_SET`の対象にはできません。
 
 通常の待機には、ホスト全体を止めないYajir組込みポート`WAIT`を使用します。`DELAY`中はUSB入力処理も停止し、処理終了後に再開します。
+
+`SLEEP`はRP2350の低電力Sleepへ入り、復帰後は次の行から実行を再開します。`ms > 0`は最大待機時間で、GPIO IRQやUSB CDC受信など別の有効な割り込みでも早期復帰します。`ms <= 0`は割り込みが発生するまで待機します。GPIOを起床源にする場合は、先に`GPIO_IRQ_ENABLE`で設定します。
 
 ```yajir
 MAIN
@@ -203,6 +206,7 @@ END
 | `scripts/pico2_w/utility_ports.yaj` | 方向付きGPIO26とPWMブザー |
 | `scripts/pico2_w/usb_morse.yaj` | USB入力をオンボードLEDでモールス送信 |
 | `scripts/pico2_w/usb_morse_selfdrive.yaj` | `AFTER`で自己駆動するイベントチェイン型のモールス送信 |
+| `scripts/pico2_w/sleep_wakeup.yaj` | タイマーまたはUSB/GPIO IRQで復帰するSleep |
 
 ## 現在のメモリ構成
 

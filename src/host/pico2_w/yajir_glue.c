@@ -5,6 +5,8 @@
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 #include "hardware/pwm.h"
+#include "hardware/timer.h"
+#include "pico/low_power.h"
 #include "pico/time.h"
 #include "pico/cyw43_arch.h"
 
@@ -141,6 +143,36 @@ static void th_delay(int argc, const script_value_t *argv)
 {
     int32_t ms = argc > 0 ? argv[0].i : 0;
     if (ms > 0) sleep_ms((uint32_t)ms);
+}
+
+static int64_t sleep_alarm_callback(alarm_id_t id, void *user_data)
+{
+    (void)id;
+    (void)user_data;
+    return 0;
+}
+
+static void th_sleep(int argc, const script_value_t *argv)
+{
+    int32_t ms = argc > 0 ? argv[0].i : 0;
+    alarm_id_t alarm_id = -1;
+    clock_dest_bitset_t keep_enabled = clock_dest_bitset_none();
+    timer_hw_t *timer = PICO_DEFAULT_TIMER_INSTANCE();
+
+    clock_dest_bitset_add(&keep_enabled,
+                          timer_get_index(timer) ? CLK_DEST_SYS_TIMER1
+                                                 : CLK_DEST_SYS_TIMER0);
+    clock_dest_bitset_add(&keep_enabled, CLK_DEST_REF_TICKS);
+
+    if (ms > 0) {
+        alarm_id = add_alarm_in_ms((uint32_t)ms, sleep_alarm_callback,
+                                   NULL, true);
+        if (alarm_id < 0) return;
+    }
+
+    low_power_sleep_until_irq(&keep_enabled);
+
+    if (alarm_id >= 0) cancel_alarm(alarm_id);
 }
 
 static int32_t led1_get(void)
@@ -508,6 +540,7 @@ void host_register_all(void)
     reg_out("PWM_FREQ", th_pwm_freq);
     reg_out("STDOUT", th_stdout);
     reg_out("DELAY", th_delay);
+    reg_out("SLEEP", th_sleep);
     reg_handler("USB_SERIAL");
     reg_handler("GPIO_IRQ");
 

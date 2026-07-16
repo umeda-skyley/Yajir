@@ -1,0 +1,13 @@
+// RP2350を最大10秒間Sleepさせます。
+// タイムアウト前でも、GPIO IRQまたはUSB通信でCPUが復帰します。
+
+MAIN
+    "[sleep] waiting for IRQ or timeout" -> STDOUT
+    10000 -> SLEEP
+    "[sleep] awake" -> STDOUT
+    1000 -> WAIT
+END
+
+ON USB_SERIAL
+    "[usb] ", ARG[0] -> STDOUT
+END

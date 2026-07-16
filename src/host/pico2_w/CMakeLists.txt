@@ -57,6 +57,7 @@ target_link_libraries(yajir_pico2_w
     hardware_sync
     hardware_flash
     pico_flash
+    pico_low_power
     pico_unique_id
     tinyusb_device
 )
