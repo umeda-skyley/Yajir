@@ -98,11 +98,8 @@ ON USB_SERIAL
     def_local(INPUT_LENGTH, VAR[0])
     def_local(INPUT_CHAR,   SVAR[0])
 
-    // Ignore CR. LF completes the line on both CRLF and LF terminals.
-    (BYTE == 13) -> IFYES
-        EXIT
-    END
-    (BYTE == 10) -> IFYES
+    // CR or LF completes the line. The second byte of CRLF sees an empty line.
+    ((BYTE == 13) | (BYTE == 10)) -> IFYES
         INPUT_LINE -> COUNTER -> IFYES
             INPUT_LINE -> UPPER -> PENDING_LINE
             1 -> LINE_READY

@@ -137,11 +137,8 @@ ON USB_SERIAL
         EXIT
     END
 
-    // Ignore CR. LF completes the line on both CRLF and LF terminals.
-    (BYTE == 13) -> IFYES
-        EXIT
-    END
-    (BYTE == 10) -> IFYES
+    // CR or LF completes the line. The second byte of CRLF is ignored.
+    ((BYTE == 13) | (BYTE == 10)) -> IFYES
         INPUT_LINE -> COUNTER -> INPUT_LENGTH
         (INPUT_LENGTH > 0) -> IFYES
             INPUT_LINE -> UPPER -> ACTIVE_LINE

@@ -1,0 +1,7 @@
+// Copy this file to the root of the YAJIR drive as autorun.yaj.
+MAIN
+    1 -> LED1
+    500 -> WAIT
+    0 -> LED1
+    500 -> WAIT
+END

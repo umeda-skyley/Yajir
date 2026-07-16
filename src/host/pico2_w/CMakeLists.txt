@@ -11,14 +11,22 @@ project(yajir_pico2_w C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+# Keep the SDK's physical flash bounds at 4 MiB. The linker region is
+# restricted separately below so the flash API can access the YAJIR drive.
+set(PICO_FLASH_SIZE_BYTES "(4 * 1024 * 1024)" CACHE STRING
+    "Physical Pico 2 W flash size" FORCE)
+
 pico_sdk_init()
 
 set(YAJIR_SRC_ROOT ${CMAKE_CURRENT_LIST_DIR}/../..)
 
 add_executable(yajir_pico2_w
     main.c
+    usb_descriptors.c
+    yajir_drive.c
     yajir_glue.c
     yajir_loader.c
+    yajir_usb.c
     ${YAJIR_SRC_ROOT}/core/compiler.c
     ${YAJIR_SRC_ROOT}/core/mathutil.c
     ${YAJIR_SRC_ROOT}/core/scheduler.c
@@ -47,8 +55,17 @@ target_link_libraries(yajir_pico2_w
     hardware_clocks
     hardware_pwm
     hardware_sync
+    hardware_flash
+    pico_flash
+    pico_unique_id
+    tinyusb_device
 )
 
-pico_enable_stdio_usb(yajir_pico2_w 1)
+pico_add_linker_script_override_path(yajir_pico2_w
+    ${CMAKE_CURRENT_LIST_DIR}
+    FILES pico_flash_region.ld
+)
+
+pico_enable_stdio_usb(yajir_pico2_w 0)
 pico_enable_stdio_uart(yajir_pico2_w 0)
 pico_add_extra_outputs(yajir_pico2_w)

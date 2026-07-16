@@ -1,0 +1,122 @@
+// Utility ports implemented entirely in Yajir.
+// An underscore marks the side where an arrow connects:
+//   GPIO26_  -> value        input
+//   value -> _GPIO26         output
+//   value -> _GPIO26_ -> ... in/out chain
+// Connect a passive piezo buzzer between GPIO15 and GND.
+// _MOTOR requires an external motor driver. Never connect a motor directly
+// to a GPIO pin. PWM=GPIO16, DIR=GPIO17, with a shared ground.
+
+def_port(GPIO26_,  T_INT)
+def_port(_GPIO26,  T_INT)
+def_port(_GPIO26_, T_INT)
+def_port(_BUZZAR,  T_INT)
+def_port(_MOTOR,   T_INT)
+
+def_alias(BUZZAR_PIN,   15)
+def_alias(BUZZAR_LEVEL, 32768)
+def_alias(MOTOR_PWM_PIN, 16)
+def_alias(MOTOR_DIR_PIN, 17)
+def_alias(MOTOR_PWM_HZ,  20000)
+
+PORT GPIO26_
+    26, GPIO_IN -> GPIO_MODE
+    26 -> GPIO_GET -> EXIT
+END
+
+PORT _GPIO26
+    26, GPIO_OUT -> GPIO_MODE
+    26, ARG[0] -> GPIO_SET -> EXIT
+END
+
+PORT _GPIO26_
+    ARG[0] -> _GPIO26
+    26 -> GPIO_GET -> EXIT
+END
+
+// Signed motor speed: -100..100. Zero stops PWM.
+PORT _MOTOR
+    def_local(SPEED, VAR[0])
+    def_local(DUTY,  VAR[1])
+
+    ARG[0], -100, 100 -> CLAMP -> SPEED
+    SPEED -> ABS -> DUTY
+    DUTY, 0, 100, 0, PWM_MAX -> MAP -> DUTY
+
+    // Remove drive before changing direction.
+    MOTOR_PWM_PIN, 0 -> PWM_SET
+    MOTOR_DIR_PIN, GPIO_OUT -> GPIO_MODE
+
+    (SPEED < 0) -> IFYES
+        MOTOR_DIR_PIN, 0 -> GPIO_SET
+    ELSE
+        MOTOR_DIR_PIN, 1 -> GPIO_SET
+    END
+
+    MOTOR_PWM_PIN, MOTOR_PWM_HZ -> PWM_FREQ
+    MOTOR_PWM_PIN, DUTY -> PWM_SET
+    SPEED -> EXIT
+END
+
+PORT _BUZZAR
+    def_local(NOTE,      ARG[0])
+    def_local(FREQUENCY, VAR[0])
+
+    NOTE -> FREQUENCY
+
+    (NOTE == 'C') -> IFYES
+        262 -> FREQUENCY
+    END
+    (NOTE == 'D') -> IFYES
+        294 -> FREQUENCY
+    END
+    (NOTE == 'E') -> IFYES
+        330 -> FREQUENCY
+    END
+    (NOTE == 'F') -> IFYES
+        349 -> FREQUENCY
+    END
+    (NOTE == 'G') -> IFYES
+        392 -> FREQUENCY
+    END
+    (NOTE == 'A') -> IFYES
+        440 -> FREQUENCY
+    END
+    (NOTE == 'B') -> IFYES
+        494 -> FREQUENCY
+    END
+    (NOTE == 'R') -> IFYES
+        0 -> FREQUENCY
+    END
+
+    (FREQUENCY <= 0) -> IFYES
+        BUZZAR_PIN, 0 -> PWM_SET
+        0 -> EXIT
+    ELSE
+        BUZZAR_PIN, FREQUENCY -> PWM_FREQ
+        BUZZAR_PIN, BUZZAR_LEVEL -> PWM_SET
+        FREQUENCY -> EXIT
+    END
+END
+
+INIT
+    "GPIO26 input: ", GPIO26_ -> STDOUT
+
+    1 -> _GPIO26_ -> STDOUT
+    0 -> _GPIO26
+
+    'C' -> _BUZZAR
+    250 -> WAIT
+    'E' -> _BUZZAR
+    250 -> WAIT
+    'G' -> _BUZZAR
+    250 -> WAIT
+    'A' -> _BUZZAR
+    500 -> WAIT
+    0 -> _BUZZAR
+
+    // Motor examples are intentionally not run automatically:
+    //  50 -> _MOTOR   // forward at 50 percent
+    // -30 -> _MOTOR   // reverse at 30 percent
+    //   0 -> _MOTOR   // stop
+END

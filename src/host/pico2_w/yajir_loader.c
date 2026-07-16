@@ -6,6 +6,7 @@
 #include "script.h"
 #include "vm.h"
 #include "yajir_glue.h"
+#include "yajir_drive.h"
 #include "yajir_loader.h"
 
 #define SCRIPT_MAX 16384
@@ -17,6 +18,7 @@ static size_t g_line_start;
 static int g_running;
 static int g_overflow_reported;
 static int g_swallow_lf;
+static int g_echo_swallow_lf;
 
 static void reset_input(void)
 {
@@ -26,11 +28,41 @@ static void reset_input(void)
     g_running = 0;
     g_overflow_reported = 0;
     g_swallow_lf = 0;
+    g_echo_swallow_lf = 0;
 }
 
 static void input_prompt(void)
 {
     yajir_puts("Paste a script, then enter @run on its own line.\r\n> ");
+}
+
+static void echo_input_byte(uint8_t byte)
+{
+    if (byte == '\r' || byte == '\n') {
+        yajir_puts("\r\n");
+    } else {
+        yajir_putc((char)byte);
+    }
+}
+
+static void echo_runtime_byte(uint8_t byte)
+{
+    if (g_echo_swallow_lf && byte == '\n') {
+        g_echo_swallow_lf = 0;
+        return;
+    }
+    g_echo_swallow_lf = 0;
+
+    if (byte == '\r') {
+        yajir_puts("\r\n");
+        g_echo_swallow_lf = 1;
+    } else if (byte == '\n') {
+        yajir_puts("\r\n");
+    } else if (byte == 8u || byte == 127u) {
+        yajir_puts("\b \b");
+    } else {
+        yajir_putc((char)byte);
+    }
 }
 
 static void put_size(size_t value)
@@ -53,7 +85,6 @@ static void banner(void)
     yajir_puts("\r\nVM arena: ");
     put_size(sizeof(g_arena));
     yajir_puts(" bytes\r\n");
-    input_prompt();
 }
 
 static void print_load_error(void)
@@ -86,12 +117,11 @@ static void print_load_error(void)
     yajir_puts("\r\n");
 }
 
-static void start_script(void)
+static int run_script(const char *source_name)
 {
-    g_source[g_line_start] = '\0';
-    g_length = g_line_start;
-
-    yajir_puts("[loader] script received: ");
+    yajir_putc('[');
+    yajir_puts(source_name);
+    yajir_puts("] script received: ");
     put_size(g_length);
     yajir_puts(" bytes\r\n");
 
@@ -99,12 +129,23 @@ static void start_script(void)
     host_register_all();
     if (script_load(g_source, g_length) != 0) {
         print_load_error();
-        yajir_puts("Press Ctrl+C to clear the input and try again.\r\n");
-        return;
+        return -1;
     }
 
     g_running = 1;
-    yajir_puts("[loader] running. USB input is now sent to ON USB_SERIAL.\r\n");
+    yajir_putc('[');
+    yajir_puts(source_name);
+    yajir_puts("] running. USB input is now sent to ON USB_SERIAL.\r\n");
+    return 0;
+}
+
+static void start_serial_script(void)
+{
+    g_source[g_line_start] = '\0';
+    g_length = g_line_start;
+
+    if (run_script("loader") != 0)
+        yajir_puts("Press Ctrl+C to clear the input and try again.\r\n");
 }
 
 static int command_at_line(const char *command)
@@ -123,9 +164,29 @@ static int command_at_line(const char *command)
 
 void yajir_loader_init(void)
 {
+    int autorun_status;
+
     memset(&g_arena, 0, sizeof(g_arena));
     reset_input();
     banner();
+
+    autorun_status = yajir_drive_load_autorun(g_source, sizeof(g_source),
+                                               &g_length);
+    if (autorun_status == YAJIR_AUTORUN_FOUND) {
+        g_line_start = g_length;
+        if (run_script("autorun") == 0) return;
+        reset_input();
+        yajir_puts("[autorun] load failed; falling back to USB serial.\r\n");
+    } else if (autorun_status == YAJIR_AUTORUN_TOO_LARGE) {
+        yajir_puts("[autorun] autorun.yaj is too large (maximum ");
+        put_size(sizeof(g_source) - 1u);
+        yajir_puts(" bytes).\r\n");
+    } else if (autorun_status == YAJIR_AUTORUN_ERROR) {
+        yajir_puts("[autorun] drive read failed.\r\n");
+    } else {
+        yajir_puts("[autorun] autorun.yaj not found.\r\n");
+    }
+    input_prompt();
 }
 
 void yajir_loader_feed_byte(uint8_t byte)
@@ -149,6 +210,7 @@ void yajir_loader_feed_byte(uint8_t byte)
     g_swallow_lf = 0;
 
     if (g_running) {
+        echo_runtime_byte(byte);
         script_post_msg_char("USB_SERIAL", (char)byte);
         return;
     }
@@ -161,6 +223,7 @@ void yajir_loader_feed_byte(uint8_t byte)
         return;
     }
 
+    echo_input_byte(byte);
     g_source[g_length++] = (char)byte;
     g_source[g_length] = '\0';
 
@@ -168,7 +231,7 @@ void yajir_loader_feed_byte(uint8_t byte)
     if (byte == '\r') g_swallow_lf = 1;
 
     if (command_at_line("@run")) {
-        start_script();
+        start_serial_script();
         return;
     }
     if (command_at_line("@fin")) {

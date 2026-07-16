@@ -200,6 +200,7 @@ END
 | `scripts/pico2_w/gpio_irq.yaj` | GPIO 15のpull-up入力と両エッジIRQ |
 | `scripts/pico2_w/adc_temp.yaj` | RP2350内部温度表示 |
 | `scripts/pico2_w/pwm_fade.yaj` | GPIO 15に接続したLEDのPWMフェード |
+| `scripts/pico2_w/utility_ports.yaj` | 方向付きGPIO26とPWMブザー |
 | `scripts/pico2_w/usb_morse.yaj` | USB入力をオンボードLEDでモールス送信 |
 | `scripts/pico2_w/usb_morse_handler.yaj` | ハンドラ駆動で実装したモールス送信 |
 

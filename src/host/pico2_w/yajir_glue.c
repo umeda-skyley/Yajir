@@ -5,7 +5,6 @@
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 #include "hardware/pwm.h"
-#include "pico/stdio.h"
 #include "pico/time.h"
 #include "pico/cyw43_arch.h"
 
@@ -13,6 +12,7 @@
 #include "script.h"
 #include "vm.h"
 #include "yajir_glue.h"
+#include "yajir_usb.h"
 
 static bool s_cyw43_ready;
 static int32_t s_led1;
@@ -46,7 +46,7 @@ enum {
 
 void yajir_putc(char c)
 {
-    putchar_raw((unsigned char)c);
+    yajir_usb_putc(c);
 }
 
 void yajir_puts(const char *s)
