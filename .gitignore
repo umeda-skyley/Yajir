@@ -19,5 +19,10 @@
 Thumbs.db
 .DS_Store
 
+# local design notes
+docs/pico2_w_plan.md
+docs/script_drive_import_idea.md
+docs/state_machine_idea.md
+
 # CubeMX生成のmain.c（STMicroのテンプレート由来・コピーライト表記あり）は非公開に留める
 src/host/stm32_l476/main.c
