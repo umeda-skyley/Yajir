@@ -202,7 +202,7 @@ END
 | `scripts/pico2_w/pwm_fade.yaj` | GPIO 15に接続したLEDのPWMフェード |
 | `scripts/pico2_w/utility_ports.yaj` | 方向付きGPIO26とPWMブザー |
 | `scripts/pico2_w/usb_morse.yaj` | USB入力をオンボードLEDでモールス送信 |
-| `scripts/pico2_w/usb_morse_handler.yaj` | ハンドラ駆動で実装したモールス送信 |
+| `scripts/pico2_w/usb_morse_selfdrive.yaj` | `AFTER`で自己駆動するイベントチェイン型のモールス送信 |
 
 ## 現在のメモリ構成
 

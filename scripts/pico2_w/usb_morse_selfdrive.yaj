@@ -1,0 +1,146 @@
+// Event-driven USB serial Morse blinker. MAIN is empty: everything self-drives.
+// Type an alphabetic line and press Enter. Ctrl+C returns to the loader.
+// Timing: dot=1 unit, dash=3, symbol gap=1, letter gap=3, word gap=7.
+//
+// Design: no MAIN state machine, no polling. Each handler schedules its own
+// continuation with `-> HANDLER AFTER <ms>`, so the whole transmission is one
+// self-propelled event chain. State that changes per step (letter index, symbol
+// position, on/off phase) rides in the arguments; only what must outlive the
+// chain stays global.
+//
+//   ON USB_SERIAL   line editor. Enter starts the chain.
+//   ON MORSE_LETTER (index)                     pick letter #index, start its code
+//   ON MORSE_SYMBOL (code, pos, on_off, index)  key the LED, then reschedule
+//
+// Why ACTIVE_LINE stays global: MORSE_SYMBOL already uses all 4 argument
+// positions (code, pos, on_off, index). Carrying the line too would overflow
+// ARG, and would re-copy the whole string on every 120ms hop for nothing.
+// BUSY stays global for one reason only: USB_SERIAL must know to ignore input
+// while a line is being sent.
+
+def_alias(INPUT_LINE,  SGVAR[0])
+def_alias(ACTIVE_LINE, SGVAR[1])
+def_alias(BUSY,        GVAR[0])
+
+def_alias(UNIT_MS, 120)
+def_alias(ALPHABET, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+def_alias(MORSE_TABLE, ".- -... -.-. -.. . ..-. --. .... .. .--- -.- .-.. -- -. --- .--. --.- .-. ... - ..- ...- .-- -..- -.-- --..")
+
+def_handler(MORSE_LETTER)
+def_handler(MORSE_SYMBOL)
+
+INIT
+    "" -> INPUT_LINE
+    "" -> ACTIVE_LINE
+    0 -> BUSY
+    "Type A-Z and press Enter." -> STDOUT
+END
+
+MAIN
+END
+
+// --- letter loop: pick letter #INDEX of ACTIVE_LINE and start its code ---
+ON MORSE_LETTER
+    def_local(INDEX,  ARG[0])
+    def_local(LEN,    VAR[0])
+    def_local(POS,    VAR[1])
+    def_local(LETTER, SVAR[0])
+    def_local(CODE,   SVAR[1])
+
+    ACTIVE_LINE -> COUNTER -> LEN
+    (INDEX > LEN) -> IFYES                    // line finished
+        "[morse] done" -> STDOUT
+        "" -> ACTIVE_LINE
+        0 -> BUSY                             // re-arm USB_SERIAL
+        EXIT
+    END
+
+    ACTIVE_LINE, INDEX, 1 -> SLICER -> LETTER
+    ALPHABET, LETTER -> FINDER -> POS
+
+    (POS > 0) -> IFYES                        // A-Z: send its code, starting now
+        MORSE_TABLE, POS -> FIELD -> CODE
+        CODE, 1, 1, INDEX -> MORSE_SYMBOL
+        EXIT
+    END
+
+    " ", LETTER -> EQUALS -> IFYES            // word gap
+        // The previous letter already supplied 3 off-units. Add 4 -> 7 total.
+        INDEX + 1 -> MORSE_LETTER AFTER UNIT_MS * 4
+        EXIT
+    END
+
+    INDEX + 1 -> MORSE_LETTER                 // skip unsupported char, no delay
+END
+
+// --- symbol loop: ON_OFF=1 keys the LED, ON_OFF=0 releases it and spaces ---
+ON MORSE_SYMBOL
+    def_local(CODE,   SARG[0])
+    def_local(POS,    ARG[1])
+    def_local(ON_OFF, ARG[2])
+    def_local(INDEX,  ARG[3])
+    def_local(LEN,    VAR[0])
+    def_local(TIME,   VAR[1])
+    def_local(CH,     SVAR[0])
+
+    CODE -> COUNTER -> LEN
+    (POS > LEN) -> IFYES                      // code finished (letter gap already waited)
+        INDEX + 1 -> MORSE_LETTER
+        EXIT
+    END
+
+    (ON_OFF == 1) -> IFYES                    // key down for dot(1) or dash(3)
+        CODE, POS, 1 -> SLICER -> CH
+        CH, "." -> EQUALS -> IFYES
+            UNIT_MS -> TIME
+        ELSE
+            UNIT_MS * 3 -> TIME
+        END
+        1 -> LED1
+        CODE, POS, 0, INDEX -> MORSE_SYMBOL AFTER TIME
+        EXIT
+    END
+
+    0 -> LED1                                 // key up, then space
+    (POS < LEN) -> IFYES
+        UNIT_MS -> TIME                       // symbol gap = 1
+    ELSE
+        UNIT_MS * 3 -> TIME                   // letter gap = 3
+    END
+    CODE, POS + 1, 1, INDEX -> MORSE_SYMBOL AFTER TIME
+END
+
+ON USB_SERIAL
+    def_local(BYTE,         ARG[0])
+    def_local(INPUT_LENGTH, VAR[0])
+    def_local(INPUT_CHAR,   SVAR[0])
+
+    (BUSY != 0) -> IFYES                      // ignore input while transmitting
+        EXIT
+    END
+
+    // CR or LF completes the line. The second byte of CRLF is ignored.
+    ((BYTE == 13) | (BYTE == 10)) -> IFYES
+        INPUT_LINE -> COUNTER -> INPUT_LENGTH
+        (INPUT_LENGTH > 0) -> IFYES
+            INPUT_LINE -> UPPER -> ACTIVE_LINE
+            "" -> INPUT_LINE
+            1 -> BUSY
+            "Morse: ", ACTIVE_LINE -> STDOUT
+            1 -> MORSE_LETTER                 // start the chain
+        END
+        EXIT
+    END
+
+    // Backspace and Delete edit the line before Enter.
+    ((BYTE == 8) | (BYTE == 127)) -> IFYES
+        INPUT_LINE -> COUNTER -> INPUT_LENGTH
+        (INPUT_LENGTH > 0) -> IFYES
+            INPUT_LINE, 1, INPUT_LENGTH - 1 -> SLICER -> INPUT_LINE
+        END
+        EXIT
+    END
+
+    BYTE -> CHR -> INPUT_CHAR
+    INPUT_LINE, INPUT_CHAR -> MERGER -> INPUT_LINE
+END
