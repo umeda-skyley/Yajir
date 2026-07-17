@@ -5,7 +5,7 @@
  * エラー文字列化と did-you-mean は common/host_diag.c に括り出した（全プラットフォーム共通）。
  *
  *   - get_tick()      : 単調増加ms（NOWへ束縛）
- *   - th_stdout       : my_print_f 相当。int は10進、str はUTF-8文字列として出力
+ *   - host_write_utf8 : コアの STDOUT が生成したUTF-8文字列をコンソールへ出力
  *   - th_calc         : my_calc(a,b)（戻り値→RESULT）
  *   - th_sysinit      : init_system()（void。RESULTは送信規則で触らない, §4）
  *   - LED1/BUZZER     : GPIO別名。状態変化をコンソールへ
@@ -19,6 +19,7 @@
 #include <windows.h>
 #include "host_mock.h"
 #include "script.h"
+#include "vm.h"
 #include "host_diag.h"   /* host_diag_reset / host_diag_note（did-you-mean 候補収集） */
 #include "netutil.h"
 #include "fileutil.h"
@@ -54,8 +55,11 @@ int32_t get_tick(void)
     return (int32_t)(t - g_start);
 }
 
-/* ---- アリーナメモリサイズを返す ---- */
-extern int get_vmsize(void);
+/* ---- PC main.c が確保する固定アリーナのサイズを返す ---- */
+static int32_t get_vmsize(void)
+{
+    return (int32_t)(sizeof(script_vm_t) + 128u);
+}
 
 /* ---- STDOUT（UTF-8対応の my_print_f 相当）---- */
 static void host_write_utf8(const char *s)
@@ -79,22 +83,6 @@ static void host_write_utf8(const char *s)
         }
     }
     fputs(s, stdout);
-}
-
-static void th_stdout(int argc, const script_value_t *a)
-{
-    int i;
-    for (i = 0; i < argc; i++) {
-        if (script_val_is_str(a[i])) {
-            host_write_utf8(script_resolve_str(a[i]));  /* 文字列定数/スロット（UTF-8） */
-        } else {
-            char num[16];
-            snprintf(num, sizeof(num), "%d", (int)a[i].i);
-            host_write_utf8(num);                       /* int→10進（グリフは CHR/FORMATTER %c で・v0.4.2） */
-        }
-    }
-    host_write_utf8("\r\n");
-    fflush(stdout);
 }
 
 /* ---- VAL_CALCULATOR（my_calc）---- */
@@ -160,9 +148,9 @@ void host_register_all(void)
     reg_inout("LED1",   led1_get,   led1_set,   SCRIPT_T_INT);
     reg_inout("BUZZER", buzzer_get, buzzer_set, SCRIPT_T_INT);
     reg_in   ("I2C1", get_i2c1_val, SCRIPT_T_INT);
-    reg_in   ("NOW",  get_tick,     SCRIPT_T_INT);
+    script_register_now(get_tick);
     reg_in   ("VMSIZE", get_vmsize, SCRIPT_T_INT);
-    reg_out  ("STDOUT",         th_stdout);
+    script_register_stdout(host_write_utf8);
     reg_inout("VAL_CALCULATOR", NULL, th_calc, SCRIPT_T_INT);
     reg_out  ("DELAY", th_delay);   /* ブロッキング遅延＝産出none の out */
 

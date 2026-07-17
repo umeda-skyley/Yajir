@@ -98,47 +98,6 @@ static void reg_const(const char *name, int32_t value)
     host_diag_note(name);
 }
 
-static void int_to_str(int32_t value, char *buf)
-{
-    char tmp[12];
-    uint32_t magnitude;
-    int i = 0;
-    int negative = value < 0;
-
-    if (negative)
-        magnitude = (uint32_t)(-(value + 1)) + 1u;
-    else
-        magnitude = (uint32_t)value;
-
-    do {
-        tmp[i++] = (char)('0' + magnitude % 10u);
-        magnitude /= 10u;
-    } while (magnitude != 0u);
-    if (negative) tmp[i++] = '-';
-
-    {
-        int j = 0;
-        while (i > 0) buf[j++] = tmp[--i];
-        buf[j] = '\0';
-    }
-}
-
-static void th_stdout(int argc, const script_value_t *argv)
-{
-    char number[16];
-    int i;
-
-    for (i = 0; i < argc; ++i) {
-        if (script_val_is_str(argv[i])) {
-            yajir_puts(script_resolve_str(argv[i]));
-        } else {
-            int_to_str(argv[i].i, number);
-            yajir_puts(number);
-        }
-    }
-    yajir_puts("\r\n");
-}
-
 static void th_delay(int argc, const script_value_t *argv)
 {
     int32_t ms = argc > 0 ? argv[0].i : 0;
@@ -524,7 +483,7 @@ void host_register_all(void)
     host_diag_reset();
 
     reg_inout("LED1", led1_get, led1_set, SCRIPT_T_INT);
-    reg_in("NOW", get_tick, SCRIPT_T_INT);
+    script_register_now(get_tick);
     reg_in("VMSIZE", get_vmsize, SCRIPT_T_INT);
     reg_inout("GPIO_GET", NULL, th_gpio_get, SCRIPT_T_INT);
     reg_inout("GPIO_SET", NULL, th_gpio_set, SCRIPT_T_INT);
@@ -538,7 +497,7 @@ void host_register_all(void)
     reg_inout("PWM_SET", NULL, th_pwm_set, SCRIPT_T_INT);
     reg_inout("PWM_GET", NULL, th_pwm_get, SCRIPT_T_INT);
     reg_out("PWM_FREQ", th_pwm_freq);
-    reg_out("STDOUT", th_stdout);
+    script_register_stdout(yajir_puts);
     reg_out("DELAY", th_delay);
     reg_out("SLEEP", th_sleep);
     reg_handler("USB_SERIAL");
