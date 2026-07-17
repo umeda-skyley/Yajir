@@ -119,6 +119,48 @@ int main(void)
         }
     }
 
+    /* 3.55) ASC（str→先頭1バイト int・空文字列は0）＝ CHR の対（v0.4.9） */
+    {
+        const char *src =
+            "INIT\n"
+            "    \"A\" -> ASC\n"              /* 65 */
+            "    RESULT -> GVAR[0]\n"
+            "    \"ABC\" -> ASC\n"            /* 先頭のみ：65 */
+            "    RESULT -> GVAR[1]\n"
+            "    \"\" -> ASC\n"               /* 空文字列：0 */
+            "    RESULT -> GVAR[2]\n"
+            "    \"Q\" -> SGVAR[0]\n"         /* スロットへ設定してから */
+            "    SGVAR[0] -> ASC\n"           /* スロット経由でも先頭バイト */
+            "    RESULT -> GVAR[3]\n"         /* SGVAR[0]=\"Q\"(81) */
+            "    90 -> CHR -> ASC\n"          /* 往復：90 -> \"Z\" -> 90 */
+            "    RESULT -> GVAR[4]\n"
+            "END\n";
+        int r = compile(src);
+        CHECK(r == 0, "ASC compiles");
+        if (r==0){ run_init();
+            CHECK(vm()->gvar[0].i==65, "\"A\" -> ASC == 65");
+            CHECK(vm()->gvar[1].i==65, "\"ABC\" -> ASC == first byte (65)");
+            CHECK(vm()->gvar[2].i==0,  "\"\" -> ASC == 0 (empty)");
+            CHECK(vm()->gvar[3].i==81, "SGVAR[0]=\"Q\" -> ASC reads first byte via slot (81)");
+            CHECK(vm()->gvar[4].i==90, "CHR/ASC round-trip: 90 -> CHR -> ASC == 90");
+        }
+    }
+
+    /* 3.56) ASC の左辺は文字列が自然: int（'A'=65）を渡すと非文字列＝空文字列扱いで 0（v0.4.9）。
+     * ポート引数は緩い（静的型チェックしない）ので、int を送っても実行時に resolve_str が "" を返し 0。 */
+    {
+        const char *src =
+            "INIT\n"
+            "    'A' -> ASC\n"               /* int 65 は非文字列 → 空 → 0 */
+            "    RESULT -> GVAR[0]\n"
+            "END\n";
+        int r = compile(src);
+        CHECK(r == 0, "'A' (int) -> ASC compiles (loose args)");
+        if (r==0){ run_init();
+            CHECK(vm()->gvar[0].i==0, "'A' (int) -> ASC == 0 (non-string treated as empty; feed ASC a string)");
+        }
+    }
+
     /* 3.6) 'A' の型・字句エラー（v0.4.2） */
     {
         CHECK(compile("INIT\n    'A' -> SVAR[0]\nEND\n") != 0, "'A' -> SVAR = type mismatch");
@@ -371,6 +413,63 @@ int main(void)
             CHECK(vm()->gvar[1].i == (int32_t)vm()->strpool_len && vm()->strpool_len > 0, "STR_USED == strpool_len (>0)");
             CHECK(strcmp(vm()->svar[0], SCRIPT_VERSION)==0, "VERSION -> SVAR[0] == version string");
         }
+    }
+
+    /* --- 行継続 `\`（v0.4.9）: バックスラッシュ＋改行で折り返し。行頭空白は捨てる --- */
+
+    /* L1) 文字列内の継続: インデントを捨てて単一行版と同値になる */
+    {
+        const char *src =
+            "def_alias(TBL, \"AB|\\\n"       /* Yajir: "AB|\ <改行> */
+            "                CD|\\\n"        /*         CD|\ <改行>  行頭空白は値に入らない */
+            "                EF\")\n"        /*         EF"          */
+            "INIT\n"
+            "    TBL -> SGVAR[0]\n"
+            "END\n";
+        int r = compile(src);
+        CHECK(r == 0, "string line-continuation compiles");
+        if (r==0){ run_init();
+            CHECK(strcmp(vm()->sgvar[0], "AB|CD|EF")==0, "continued string == single-line (leading indent stripped)");
+        }
+    }
+
+    /* L2) 文字列の外の継続: def_alias を名前/カンマの後で折り返せる（論理行がつながる） */
+    {
+        const char *src =
+            "def_alias(TBL2, \\\n"          /* Yajir: def_alias(TBL2, \ <改行> */
+            "    \"XY\")\n"                 /*         "XY")                   */
+            "INIT\n"
+            "    TBL2 -> SGVAR[0]\n"
+            "END\n";
+        int r = compile(src);
+        CHECK(r == 0, "logical-line continuation (outside string) compiles");
+        if (r==0){ run_init();
+            CHECK(strcmp(vm()->sgvar[0], "XY")==0, "def_alias split across lines yields the same value");
+        }
+    }
+
+    /* L3) 意図的な空白は `\` の前に置けば残る（前行末の空白は保持） */
+    {
+        const char *src =
+            "def_alias(SP, \"a  \\\n"       /* "a  \ : 2スペースは \ の前なので残る */
+            "              b\")\n"          /*  b"   : 次行頭の字下げは捨てる       */
+            "INIT\n"
+            "    SP -> SGVAR[0]\n"
+            "END\n";
+        int r = compile(src);
+        CHECK(r == 0, "intentional trailing space before backslash compiles");
+        if (r==0){ run_init();
+            CHECK(strcmp(vm()->sgvar[0], "a  b")==0, "space before backslash kept, indent after newline stripped");
+        }
+    }
+
+    /* L4) 継続無しの生の改行は従来どおりエラー（文字列は1行内の不変を保つ） */
+    {
+        const char *src =
+            "INIT\n"
+            "    \"AB\nCD\" -> SVAR[0]\n"   /* \ 無しの生改行 → unterminated string */
+            "END\n";
+        CHECK(compile(src) != 0, "bare newline inside string still errors (no silent continuation)");
     }
 
     printf("\n%s (failures=%d)\n", g_fail ? "PHASE7 FAILED" : "PHASE7 PASSED", g_fail);

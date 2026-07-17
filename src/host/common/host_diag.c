@@ -56,7 +56,7 @@ static const char *const g_builtin_names[] = {
     "NOW","STDOUT",   /* コア昇格したホスト注入点（v0.4.8）。綴り間違い候補もコア builtin 扱い */
     "CODE_USED","STR_USED","VERSION",
     "SLICER","MERGER","COUNTER","FORMATTER","EQUALS","FINDER","STRTOL",
-    "FIELD","UPPER","LOWER","TRIMMER","INVOKER",
+    "FIELD","UPPER","LOWER","TRIMMER","INVOKER","CHR","ASC",
     "ERR_QUEUE_OVF","ERR_TIMER_FULL","ERR_DIVZERO","ERR_STR_TRUNC",
     "ERR_BUDGET","ERR_DELAY_FULL",
     "WAIT","CLEAR_ERR","HANDLER","AFTER",

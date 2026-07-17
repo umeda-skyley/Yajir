@@ -88,7 +88,8 @@ STATUS -> GVAR[0]
 |`EQUALS`|int|`strA, strB`|一致なら `1`、不一致なら `0`|
 |`FINDER`|int|`hay, needle`|`needle` の最初の出現位置（**1始まり**）。無ければ `0`|
 |`STRTOL`|int|`str [, base]`|文字列を整数へ。**既定は16進**。第2引数で基数指定（2〜36, 0=自動）|
-|`CHR`|str|`int`|整数を1文字の文字列へ（グリフ化）。`STRTOL`（str→int）の対。受信バイトのエコー等に|
+|`CHR`|str|`int`|整数を1文字の文字列へ（グリフ化）。`ASC`（str→int）の対。受信バイトのエコー等に|
+|`ASC`|int|`str`|文字列の**先頭1バイトを 0..255**（空文字列は `0`）。`CHR`（int→str）の対＝文字→数値の一発変換|
 |`SLICER`|str|`str, start, len`|部分文字列（`start` は**1始まり**）|
 |`MERGER`|str|`strA, strB`|連結|
 |`FORMATTER`|str|`fmt, args…`|`printf` 風の整形（後述）|
@@ -113,6 +114,11 @@ STATUS -> GVAR[0]
 65   -> CHR                   # SRESULT = "A"
 'A'  -> CHR                   # SRESULT = "A"（'A' == 65）
 ARG[0] -> CHR -> STDOUT       # 受信バイト(int)を文字でエコー
+
+# 文字→整数（CHR の対）。ASC の入力は文字列
+"A"  -> ASC                   # RESULT = 65
+""   -> ASC                   # RESULT = 0（空文字列）
+90 -> CHR -> ASC              # RESULT = 90（往復）
 
 # 切り出し・連結（1始まり）
 "HELLO WORLD", 1, 5 -> SLICER # SRESULT = "HELLO"

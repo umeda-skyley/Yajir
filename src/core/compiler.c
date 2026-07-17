@@ -81,7 +81,38 @@ static const alias_t *alias_find(const char *name)
         if (strcmp(s_aliases[i].name, name) == 0) return &s_aliases[i];
     return NULL;
 }
-/* エイリアス名に使えない予約語（スロット名・制御語）。ポート/定数は vm_find_port で別途弾く。 */
+/* ビルド設定 `CFG_*` をスクリプトから読める**コンパイル時定数**として公開する（v0.4.9）。
+ * 式の値位置で int リテラルへ展開するだけ＝ポートも alias スロットも消費せず・実行時コストゼロ・
+ * 読み取り専用（送り先には立てられない）。値は「このビルドの script_config.h の実値」なので、
+ * `CFG_VAR_COUNT -> REPEAT … ITR -> VAR … END` のようにプラットフォーム非依存でスロットを舐められる。
+ * 公開範囲はスクリプトが移植のために必要とする「寸法」定数に絞る（内部限界 CODE_SIZE 等は非公開）。 */
+typedef struct { const char *name; int32_t val; } cfg_const_t;
+static const cfg_const_t s_cfg_consts[] = {
+    { "CFG_GVAR_COUNT",     CFG_GVAR_COUNT     },   /* スロット数 */
+    { "CFG_VAR_COUNT",      CFG_VAR_COUNT      },
+    { "CFG_ARG_COUNT",      CFG_ARG_COUNT      },
+    { "CFG_SGVAR_COUNT",    CFG_SGVAR_COUNT    },
+    { "CFG_SVAR_COUNT",     CFG_SVAR_COUNT     },
+    { "CFG_SARG_COUNT",     CFG_SARG_COUNT     },
+    { "CFG_SSTR_LEN",       CFG_SSTR_LEN       },   /* 文字列スロット長（終端含む） */
+    { "CFG_SARG_LEN",       CFG_SARG_LEN       },
+    { "CFG_TIMER_SLOTS",    CFG_TIMER_SLOTS    },   /* 資源スロット数 */
+    { "CFG_DELAY_SLOTS",    CFG_DELAY_SLOTS    },
+    { "CFG_CALL_NEST",      CFG_CALL_NEST      },
+    { "CFG_LOOP_NEST",      CFG_LOOP_NEST      },
+    { "CFG_EVENT_QUEUE_LEN",CFG_EVENT_QUEUE_LEN},
+    { "CFG_MAX_PORTS",      CFG_MAX_PORTS      },
+};
+/* 見つかれば値を *out（非NULLなら）へ入れて1、無ければ0。 */
+static int cfg_const_find(const char *n, int32_t *out)
+{
+    int i, ncfg = (int)(sizeof(s_cfg_consts) / sizeof(s_cfg_consts[0]));
+    for (i = 0; i < ncfg; i++)
+        if (strcmp(n, s_cfg_consts[i].name) == 0) { if (out) *out = s_cfg_consts[i].val; return 1; }
+    return 0;
+}
+
+/* エイリアス名に使えない予約語（スロット名・制御語・CFG_定数）。ポート/定数は vm_find_port で別途弾く。 */
 static int is_reserved_name(const char *n)
 {
     static const char *const kw[] = {
@@ -91,6 +122,7 @@ static int is_reserved_name(const char *n)
     };
     int i;
     for (i = 0; kw[i]; i++) if (strcmp(n, kw[i]) == 0) return 1;
+    if (cfg_const_find(n, NULL)) return 1;   /* CFG_* 公開定数も予約（def_alias 等で上書き不可, v0.4.9） */
     return 0;
 }
 
@@ -253,6 +285,12 @@ static void parse_primary(void)
         if (!strcmp(name, "SARG"))  { adv(); { int i = read_index(CFG_SARG_COUNT,  "SARG");  emit8(OP_LOAD_SARG);  emit8(i); } g_type = TY_STR; return; }  /* 受信専用・読みのみ（§10） */
         if (!strcmp(name, "none"))
             fail(line, ERR_SYNTAX);   /* 'none' は引数リスト全体のときだけ */
+
+        /* ビルド設定 CFG_* を int リテラルへ展開（コンパイル時定数・ポート/alias 非消費, v0.4.9） */
+        {
+            int32_t cv;
+            if (cfg_const_find(name, &cv)) { adv(); emit8(OP_PUSH_INT); emit_i32(cv); return; }
+        }
 
         /* エイリアス（def_alias）：スロット/数値/文字列に展開（コンパイル時, v0.3.8） */
         {

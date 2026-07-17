@@ -109,6 +109,15 @@ static void th_chr(int argc, const script_value_t *a)
     script_set_sresult(buf);
 }
 
+/* ASC: str -> RESULT。文字列の先頭1バイトを 0..255 で返す。空文字列は 0（§3, v0.4.9）。
+ * CHR（int→1文字str）の対＝文字→数値の一発変換。Yajir では 'A' は既に int 65（見た目だけ）
+ * なので、ASC の入力は文字列が自然（`"A" -> ASC` == 65）。空文字列は s[0]=='\0'==0 で自然に 0。 */
+static void th_asc(int argc, const script_value_t *a)
+{
+    const char *s = (argc > 0) ? script_resolve_str(a[0]) : "";
+    script_set_result((int32_t)(unsigned char)s[0]);
+}
+
 /* FIELD: str, [delim,] N -> SRESULT。区切りでN番目(1始まり)のトークンを取り出す（§3, v0.4）。
  *   "SEND 0001 0002 OK", " ", 3 -> FIELD  → "0002"   ／  line, 3 -> FIELD  ＝ 空白区切りの略記
  * delim は「区切り文字の集合」(strtok流)＝delim中のどの文字も区切り。連続区切りは潰し、
@@ -239,6 +248,7 @@ void register_strutils(void)
     script_register_inout("FINDER",    NULL, th_finder,    SCRIPT_T_INT);   /* 位置検索（1始まり）, v0.3.8 */
     script_register_inout("STRTOL",    NULL, th_strtol,    SCRIPT_T_INT);   /* 文字列→整数（既定16進）, v0.4 */
     script_register_inout("CHR",       NULL, th_chr,       SCRIPT_T_STR);   /* 整数→1文字str（グリフ化）, v0.4.2 */
+    script_register_inout("ASC",       NULL, th_asc,       SCRIPT_T_INT);   /* 文字列先頭1バイト→int（CHR の対）, v0.4.9 */
     script_register_inout("FIELD",     NULL, th_field,     SCRIPT_T_STR);   /* 区切りN番目トークン, v0.4 */
     script_register_inout("UPPER",     NULL, th_upper,     SCRIPT_T_STR);   /* 大文字化, v0.4 */
     script_register_inout("LOWER",     NULL, th_lower,     SCRIPT_T_STR);   /* 小文字化, v0.4 */
