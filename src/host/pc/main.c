@@ -24,10 +24,6 @@
 /* 固定アリーナ（ヒープ不使用。ホストが用意する固定RAM領域に相当, §12） */
 static char g_arena[sizeof(script_vm_t) + 128];
 
-int get_vmsize(void){
-    return sizeof(g_arena);
-}
-
 static char *read_file(const char *path, size_t *out_len)
 {
     FILE *f = fopen(path, "rb");
@@ -46,28 +42,13 @@ static char *read_file(const char *path, size_t *out_len)
     return buf;
 }
 
-/* 多値イベント post のサンプル（int, int, str）。RXDATA源へ1イベントをアトミックに積む。
- * スクリプト側 ON RXDATA では ARG[0]=src, ARG[1]=dst, SARG[2]=data で読める。 */
-static void post_rxdata(void)
-{
-    static int seq = 0;
-    static const char *msgs[] = { "PING", "HELLO", "YAJIR", "BTN-UP" };
-    script_arg_t a[3];
-    seq++;
-    a[0] = SCRIPT_ARG_INT(seq);                  /* src  : 連番 */
-    a[1] = SCRIPT_ARG_INT(0x10 + (seq & 0x0F));  /* dst  : 0x10.. */
-    a[2] = SCRIPT_ARG_STR(msgs[seq & 3], strlen(msgs[seq & 3]));  /* data : 文字列（位置2 → SARG[2]） */
-    script_post_msg_v("RXDATA", 3, a);
-}
-
-/* 擬似割り込みドライバ：キーボードを UART1 / BTN / RXDATA イベントへ。戻り値1で終了要求 */
+/* 擬似割り込みドライバ：キーボードを UART1 / BTN / MYHANDLER イベントへ。戻り値1で終了要求 */
 static int poll_pseudo_irq(void)
 {
     while (_kbhit()) {
         int ch = _getch();
         if (ch == 27) return 1;                          /* ESC=終了 */
         if (ch == '\t') { script_post_msg("BTN", 0); }   /* TAB=ボタン押下 */
-        else if (ch == 'd' || ch == 'D') { post_rxdata(); } /* d=RXDATA（多値: int,int,str） */
         else if (ch == 'm' || ch == 'M') { host_fire_myhandler(1, 2, 3); } /* m=MYHANDLERをC側からpost */
         else if (ch == '\r') { script_post_msg_char("UART1", '\n'); }
         else { script_post_msg_char("UART1", (char)ch); } /* 印字キー=UART受信 */
@@ -97,6 +78,7 @@ int main(int argc, char **argv)
     if (!src) { fprintf(stderr, "cannot read file: %s\n", path); return 2; }
 
     /* init → register（def_*の実体）→ load（受信→コンパイル→常駐, §11） */
+    printf("[script] arena size: %u bytes\n", (unsigned)sizeof(g_arena));  /* 実機ローダと同じ作法（docs/resource_config.md） */
     script_init(g_arena, sizeof(g_arena));
     host_register_all();
 
@@ -117,7 +99,7 @@ int main(int argc, char **argv)
     }
     free(src);
 
-    printf("[script] loaded '%s'. keys: <printable>=UART1 echo, TAB=BTN, d=RXDATA(int,int,str), m=MYHANDLER, ESC=quit\n", path);
+    printf("[script] loaded '%s'. keys: <printable>=UART1 echo, TAB=BTN, m=MYHANDLER, ESC=quit\n", path);
     if (max_ms >= 0) printf("[script] auto-stop after %d s\n", max_ms / 1000);
 
     start_ms = get_tick();
@@ -126,7 +108,7 @@ int main(int argc, char **argv)
     for (;;) {
         if (poll_pseudo_irq()) break;
 
-        /* 入力が無くてもデモが進むよう、3秒ごとに擬似BTN（BUZZER+TIMERの実演） */
+        /* 入力が無くてもデモが進むよう、3秒ごとに擬似BTN（ON BTN の実演） */
         if (get_tick() >= next_btn_ms) {
             script_post_msg("BTN", 0);
             next_btn_ms += 3000;

@@ -24,7 +24,7 @@
 
 /* Yajir 言語/実装バージョン。スクリプトからは入力ポート VERSION（str産出）で、
  * ホストからは script_version() で読める（§11, v0.4）。 */
-#define SCRIPT_VERSION "0.4.7"
+#define SCRIPT_VERSION "0.4.8"
 
 /* 出力ポートが受け取る値（型タグ付き）。SV_INTは数値、SV_STRは script_str()で文字列に
  * 解決して出力する（v0.4.2でCHARタグ撤去＝値は int/str の2択・§9。数を文字グリフで出すのは
@@ -33,6 +33,9 @@ typedef value_t script_value_t;
 
 typedef void    (*script_out_fn)(int argc, const script_value_t *argv);
 typedef int32_t (*script_in_fn)(void);
+/* STDOUT のシンク（1文字列を出力）。コアが出力ポリシー（ループ/タグ判定/int→10進/改行）を
+ * 所有し、ホストはこの関数＝出力先だけを渡す（§11, v0.4.8）。 */
+typedef void    (*script_puts_fn)(const char *s);
 
 /* ポートの産出型（§3, §11, v0.3.8）。in/inout は登録時に必須指定（out/handler は産出none）。
  * int産出は RESULT 経由、str産出は SRESULT 経由（script_set_result / script_set_sresult）。 */
@@ -54,6 +57,13 @@ void script_register_in   (const char *name, script_in_fn fn, script_type_t out_
  * 物理inout(LED1等)は get_fn で読める。関数ポート(FORMATTER等)は get_fn=NULL（読み不可・送信専用）。 */
 void script_register_inout(const char *name, script_in_fn get_fn, script_out_fn set_fn, script_type_t out_type);
 void script_register_handler(const char *name);   /* ハンドラ源・産出none（§3, §10） */
+/* NOW: 単調増加クロック(ms)を登録する。内部クロック（タイマ/周期/WAIT/遅延post の源）＝コア必須（§8, v0.4.8）。
+ * PK_IN "NOW" も同時に登録するので、スクリプトからは NOW -> x で読める。
+ * 未登録のまま script_load すると ERR_NO_CLOCK で失敗する（サイレント故障の防止）。 */
+void script_register_now(script_in_fn tick);
+/* STDOUT: 出力シンクだけを渡す。ループ/タグ判定/int→10進/改行のポリシーはコアが持つ（§11, v0.4.8）。
+ * 任意（未登録なら STDOUT ポートは無く、-> STDOUT はコンパイル時 ERR_UNKNOWN_PORT）。 */
+void script_register_stdout(script_puts_fn puts_fn);
 /* script: スクリプト内ポート（def_port）。本体は PORT ブロック（コンパイラが bc_start を後埋め）。
  * inout 同格・産出型必須・両辺可でチェイン可（§3, §7, v0.4.5）。 */
 void script_register_script_port(const char *name, script_type_t out_type);
@@ -116,6 +126,7 @@ typedef enum {
     ERR_BAD_POSITION,    /* ポート向き違反: in を右辺 / out を左辺 / 産出noneを中間（§3, v0.3.8） */
     ERR_TOO_MANY_PORTS,  /* スクリプト def_handler/def_port でポート表が満杯（§3, v0.4.1/v0.4.5） */
     ERR_RECURSION,       /* スクリプト内ポートの再帰サイクル（§3, v0.4.5・load時DFS）。tok=サイクル上のポート名 */
+    ERR_NO_CLOCK,        /* 内部クロック未登録（§8, v0.4.8）。script_register_now を呼び忘れ＝時間が動かない */
     ERR_SYNTAX           /* 上記に当てはまらない構文崩れ（受け皿） */
 } script_err_t;
 

@@ -15,6 +15,7 @@ static int g_fail = 0;
     if (cond) printf("  ok   : %s\n", msg); \
     else { printf("  FAIL : %s\n", msg); g_fail++; } } while (0)
 
+static int32_t t_now(void){ return 0; }   /* v0.4.8: ロード時クロック要求を満たす最小スタブ */
 static int compile(const char *s){ return script_load(s, strlen(s)); }
 
 /* INIT を実走（1 tick で INIT 完走→RUN 遷移） */
@@ -24,6 +25,7 @@ int main(void)
 {
     static char arena[sizeof(script_vm_t)+64];
     script_init(arena, sizeof(arena));
+    script_register_now(t_now);   /* v0.4.8: クロック源が無いと script_load が ERR_NO_CLOCK */
     printf("== Phase12 script ports / EXIT ==\n");
 
     /* 1) 基本: int サブルーチン（ARG[0]+ARG[1] を返す）＋終端呼び */

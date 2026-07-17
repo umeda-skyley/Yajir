@@ -18,12 +18,14 @@ static void run_init(void){
         uint16_t pc=vm()->blocks[i].bc_start; int b=CFG_INSTR_BUDGET; int32_t ms=0;
         vm()->sp=0; vm()->loop_sp=0; vm_exec(&pc,&b,&ms,0); return; }
 }
+static int32_t t_now(void){ return 0; }   /* v0.4.8: ロード時クロック要求を満たす最小スタブ */
 static int compile(const char *s){ return script_load(s, strlen(s)); }
 
 int main(void)
 {
     static char arena[sizeof(script_vm_t)+64];
     script_init(arena, sizeof(arena));
+    script_register_now(t_now);   /* v0.4.8: クロック源が無いと script_load が ERR_NO_CLOCK */
     printf("== Phase11 REPEAT / ITR / dynamic index ==\n");
 
     /* 1) REPEAT + ITR: 1..10 を合計 = 55 */

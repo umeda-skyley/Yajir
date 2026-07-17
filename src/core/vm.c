@@ -33,20 +33,37 @@ const char *vm_str(int32_t off)
     return &g_vm->strpool[off];
 }
 
-/* 現在tick(ms)。スケジューラ/タイマが使う単調クロック。
- * 仕様の慣用名 "NOW"（def_in で束縛）を内部クロックとして用いる（§3）。 */
-int32_t vm_now(void)
+/* now_fn を解決する（未設定ならポート表を1回だけ走査してキャッシュ）。見つからなければ NULL。
+ * 旧来の script_register_in("NOW",…) だけで束ねたホストも、初回以降は O(1) になる（§8, v0.4.8）。 */
+static in_fn_t resolve_now_fn(script_vm_t *m)
 {
-    script_vm_t *m = g_vm;
     int i;
-    if (!m) return 0;
+    if (m->now_fn) return m->now_fn;
     for (i = 0; i < m->nports; i++) {
         if (m->ports[i].kind == PK_IN && m->ports[i].get_fn &&
             strcmp(m->ports[i].name, "NOW") == 0) {
-            return m->ports[i].get_fn();
+            m->now_fn = m->ports[i].get_fn;   /* キャッシュ */
+            return m->now_fn;
         }
     }
-    return 0;
+    return NULL;
+}
+
+/* 現在tick(ms)。スケジューラ/タイマが使う単調クロック（NOW）。now_fn を O(1) で呼ぶ。
+ * 源が無ければ 0（この状態はロード時 ERR_NO_CLOCK で弾かれるので通常到達しない, §8, v0.4.8）。 */
+int32_t vm_now(void)
+{
+    script_vm_t *m = g_vm;
+    in_fn_t fn;
+    if (!m) return 0;
+    fn = resolve_now_fn(m);
+    return fn ? fn() : 0;
+}
+
+/* クロック源が解決できるか（ロード時ガード用）。副作用: 見つかれば now_fn にキャッシュ。 */
+int vm_has_clock(void)
+{
+    return (g_vm && resolve_now_fn(g_vm) != NULL) ? 1 : 0;
 }
 
 /* タイマスロットを1本確保し fire_time を設定（§8）。満杯なら無視＋フラグ。
