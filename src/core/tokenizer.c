@@ -47,9 +47,18 @@ static int lex_string(lexer_t *lx, token_t *out, char *errbuf, size_t errbuf_sz,
     lx->pos++; /* 開始の " を消費 */
     while (!at_end(lx) && peek(lx) != '"') {
         char c = peek(lx);
-        if (c == '\n' || c == '\r') return lex_err(errbuf, errbuf_sz, errline, lx->line, "unterminated string");  /* 文字列は1行内 */
+        if (c == '\n' || c == '\r') return lex_err(errbuf, errbuf_sz, errline, lx->line, "unterminated string");  /* 文字列は1行内（明示継続を除く） */
         if (c == '\\') {
             char e = peek2(lx);
+            if (e == '\r' || e == '\n') {          /* 行継続（v0.4.9）: \ + 改行 + 行頭空白 を飲んで文字列を次行へ */
+                lx->pos++;                          /* '\' を消費 */
+                { char n1 = peek(lx); lx->pos++;    /* 改行1文字目を消費 */
+                  char n2 = peek(lx);               /* CRLF/LFCR は1改行に畳む */
+                  if ((n1 == '\r' && n2 == '\n') || (n1 == '\n' && n2 == '\r')) lx->pos++; }
+                lx->line++;
+                while (peek(lx) == ' ' || peek(lx) == '\t') lx->pos++;   /* 行頭インデントを捨てる */
+                continue;                           /* 何も append しない */
+            }
             switch (e) {
                 case 'r':  c = '\r'; break;
                 case 'n':  c = '\n'; break;
@@ -120,6 +129,17 @@ int lex_next(lexer_t *lx, token_t *out, char *errbuf, size_t errbuf_sz, int *err
     for (;;) {
         char c = peek(lx);
         if (c == ' ' || c == '\t' || LX_IS_NL_SPACE(c)) { lx->pos++; continue; }
+        if (c == '\\') {                              /* 行継続（v0.4.9）: \ + 改行 → 論理行をつなぐ（T_NEWLINE を出さない） */
+            char d = peek2(lx);
+            if (d == '\r' || d == '\n') {
+                lx->pos++;                            /* '\' を消費 */
+                { char n1 = peek(lx); lx->pos++;      /* 改行1文字目を消費 */
+                  char n2 = peek(lx);                 /* CRLF/LFCR は1改行に畳む */
+                  if ((n1 == '\r' && n2 == '\n') || (n1 == '\n' && n2 == '\r')) lx->pos++; }
+                lx->line++;
+                continue;                             /* 直後の行頭空白は次周回の空白処理が読み飛ばす */
+            }
+        }
         if (c == '/' && peek2(lx) == '/') {           /* 行コメント（CR/LF どちらでも終端） */
             while (!at_end(lx) && peek(lx) != '\n' && peek(lx) != '\r') lx->pos++;
             continue;

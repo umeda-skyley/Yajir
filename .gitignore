@@ -15,3 +15,6 @@ Thumbs.db
 
 # CubeMX生成のmain.c（STMicroのテンプレート由来・コピーライト表記あり）は非公開に留める
 src/host/stm32_l476/main.c
+
+# 仕様書メモ（開発用ローカル・非push）。公開する変更履歴は change_history.md に分離済み。
+script_spec_v*.md

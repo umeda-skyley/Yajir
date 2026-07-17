@@ -156,6 +156,41 @@ int main(void)
           CHECK(e->code == ERR_UNKNOWN_PORT && e->line == 3, "CRLF: error line counted once (@3)"); }
     }
 
+    /* 10) CFG_* コンパイル時定数（v0.4.9）: ビルド実値へ int リテラル展開・ポート/alias 非消費 */
+    {
+        int bi;
+        const char *src =
+            "INIT\n"
+            "    CFG_VAR_COUNT  -> OUT\n"                     /* スロット数 */
+            "    CFG_SSTR_LEN   -> OUT\n"                     /* 文字列長 */
+            "    (CFG_VAR_COUNT + CFG_SVAR_COUNT) -> OUT\n"   /* 式の中でも定数 */
+            "END\n";
+        CHECK(compile(src) == 0, "CFG_* constants compile in expressions");
+        g_seqn = 0; bi = find_block(BLK_INIT);
+        if (bi >= 0) run_block(bi, 0);
+        CHECK(g_seqn == 3, "three CFG values emitted");
+        CHECK(g_seq[0] == CFG_VAR_COUNT, "CFG_VAR_COUNT == build value");
+        CHECK(g_seq[1] == CFG_SSTR_LEN,  "CFG_SSTR_LEN == build value");
+        CHECK(g_seq[2] == CFG_VAR_COUNT + CFG_SVAR_COUNT, "CFG_* usable in arithmetic");
+
+        /* CFG_VAR_COUNT -> REPEAT … ITR … END でスロット数ぶん回る（プラットフォーム非依存） */
+        CHECK(compile("INIT\n    CFG_VAR_COUNT -> REPEAT\n        ITR -> OUT\n    END\nEND\n") == 0,
+              "CFG_VAR_COUNT drives REPEAT count");
+        g_seqn = 0; bi = find_block(BLK_INIT);
+        if (bi >= 0) run_block(bi, 0);
+        CHECK(g_seqn == CFG_VAR_COUNT && g_seq[CFG_VAR_COUNT-1] == CFG_VAR_COUNT,
+              "REPEAT ran CFG_VAR_COUNT times (ITR 1..N)");
+
+        /* 読み取り専用: 送り先には立てられない */
+        CHECK(compile("INIT\n    1 -> CFG_VAR_COUNT\nEND\n") != 0, "CFG_* cannot be a send target");
+        /* 予約名: def_alias で上書き不可 */
+        CHECK(compile("def_alias(CFG_VAR_COUNT, 3)\nINIT\n    1 -> OUT\nEND\n") != 0,
+              "CFG_* reserved: def_alias cannot shadow it");
+        /* 非公開の CFG_ 名は通常の未知名（内部限界は隠す） */
+        CHECK(compile("INIT\n    CFG_CODE_SIZE -> OUT\nEND\n") != 0,
+              "unexposed CFG_ name is an unknown name (internals hidden)");
+    }
+
     printf("\n%s (failures=%d)\n", g_fail ? "PHASE2 FAILED" : "PHASE2 PASSED", g_fail);
     return g_fail ? 1 : 0;
 }
