@@ -18,3 +18,6 @@ src/host/stm32_l476/main.c
 
 # 仕様書メモ（開発用ローカル・非push）。公開する変更履歴は change_history.md に分離済み。
 script_spec_v*.md
+
+# 作業規約メモ（Claude Code 用の恒久指示）はローカルのみ・非push。
+CLAUDE.md
