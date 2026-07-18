@@ -60,13 +60,14 @@ VERSION    -> STDOUT          # → 0.4.2
 
 `STATUS` と AND して、どのエラーが立っているか調べるための定数です（読み取り専用）。
 
-|定数|意味|
-|-|-|
-|`ERR_QUEUE_OVF`|イベントキュー溢れ|
-|`ERR_TIMER_FULL`|タイマ枠が一杯|
-|`ERR_DIVZERO`|ゼロ除算が起きた|
-|`ERR_STR_TRUNC`|文字列が切り詰められた|
-|`ERR_BUDGET`|`REPEAT` が命令数上限で打ち切られた（v0.4.4）|
+|定数|ビット|意味|
+|-|-|-|
+|`ERR_QUEUE_OVF`|`0x01`|イベントキュー溢れ|
+|`ERR_TIMER_FULL`|`0x02`|タイマ枠が一杯|
+|`ERR_DIVZERO`|`0x04`|ゼロ除算・ゼロ剰余が起きた|
+|`ERR_STR_TRUNC`|`0x08`|文字列が切り詰められた|
+|`ERR_BUDGET`|`0x10`|`REPEAT` が命令数上限で打ち切られた（v0.4.4）|
+|`ERR_DELAY_FULL`|`0x20`|遅延post（`AFTER`）の pending 表が満杯で新着を捨てた（v0.4.7）|
 
 ```
 STATUS -> GVAR[0]
