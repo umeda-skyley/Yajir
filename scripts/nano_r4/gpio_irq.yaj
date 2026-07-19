@@ -1,0 +1,18 @@
+// D2をプルアップ入力にし、GNDへ接続・切断したときのエッジを表示します。
+// IRQを止めるときは IRQ_PIN -> GPIO_IRQ_DISABLE を実行します。
+
+def_alias(IRQ_PIN, 2)
+
+INIT
+	IRQ_PIN, GPIO_IN_PULLUP -> GPIO_MODE
+	IRQ_PIN, GPIO_IRQ_RISE + GPIO_IRQ_FALL -> GPIO_IRQ_ENABLE
+	"GPIO IRQ ready on D2" -> STDOUT
+END
+
+MAIN
+	1000 -> WAIT
+END
+
+ON GPIO_IRQ
+	"pin=", ARG[0], " edge=", ARG[1], " value=", ARG[2] -> STDOUT
+END

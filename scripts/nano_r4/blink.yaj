@@ -1,0 +1,9 @@
+// Nano R4の単色内蔵LEDを250ms間隔で点滅します。
+// USB serialへ貼り付け、次の行で @run を送ってください。
+
+MAIN
+    1 -> LED1
+    250 -> WAIT
+    0 -> LED1
+    250 -> WAIT
+END

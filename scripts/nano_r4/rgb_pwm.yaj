@@ -1,0 +1,51 @@
+// Nano R4の内蔵RGB LEDをPWM調光し、色を滑らかに巡回させます。
+// USB serialへ貼り付け、次の行で @run を送ってください。
+
+def_alias(RED, GVAR[0])
+def_alias(GREEN, GVAR[1])
+def_alias(BLUE, GVAR[2])
+def_alias(PHASE, GVAR[3])
+def_alias(LEVEL, GVAR[4])
+def_alias(STEP, 2048)
+
+INIT
+	PWM_MAX -> RED
+	0 -> GREEN
+	0 -> BLUE
+	0 -> PHASE
+	0 -> LEVEL
+END
+
+MAIN
+	LEVEL + STEP -> LEVEL
+	(LEVEL > PWM_MAX) -> IFYES
+		PWM_MAX -> LEVEL
+	END
+
+	(PHASE == 0) -> IFYES
+		PWM_MAX - LEVEL -> RED
+		LEVEL -> GREEN
+	END
+
+	(PHASE == 1) -> IFYES
+		PWM_MAX - LEVEL -> GREEN
+		LEVEL -> BLUE
+	END
+
+	(PHASE == 2) -> IFYES
+		PWM_MAX - LEVEL -> BLUE
+		LEVEL -> RED
+	END
+
+	RED, GREEN, BLUE -> RGB_PWM
+
+	(LEVEL >= PWM_MAX) -> IFYES
+		0 -> LEVEL
+		PHASE + 1 -> PHASE
+		(PHASE >= 3) -> IFYES
+			0 -> PHASE
+		END
+	END
+
+	25 -> WAIT
+END

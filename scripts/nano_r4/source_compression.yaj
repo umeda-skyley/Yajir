@@ -1,0 +1,14 @@
+// Nano R4の受信時ソース圧縮と継続文字列を確認します。
+// 実行結果が xxxxx//xxxxx//111111 なら、文字列内の//は保持されています。
+
+def_alias(TEXT, "xxxxx\
+	//xxxxx\
+	//111111")
+
+INIT
+	TEXT -> STDOUT // "この引用符はインラインコメント内です"
+END
+
+MAIN
+	1000 -> WAIT
+END

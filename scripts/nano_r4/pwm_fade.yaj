@@ -1,0 +1,29 @@
+// D3のPWMでLEDをフェードさせます。LEDには抵抗を直列に接続してください。
+// Ctrl+CでPWMを停止し、D3をLowへ戻します。
+
+def_alias(PWM_PIN, 3)
+def_alias(PWM_STEP, 4096)
+def_alias(PWM_PEAK, 61440)
+def_alias(LEVEL, GVAR[0])
+def_alias(DIRECTION, GVAR[1])
+
+INIT
+	PWM_PIN, PWM_DEFAULT_FREQ -> PWM_FREQ
+	0 -> LEVEL
+	1 -> DIRECTION
+END
+
+MAIN
+	LEVEL + DIRECTION * PWM_STEP -> LEVEL
+
+	(LEVEL >= PWM_PEAK) -> IFYES
+		-1 -> DIRECTION
+	END
+
+	(LEVEL <= 0) -> IFYES
+		1 -> DIRECTION
+	END
+
+	PWM_PIN, LEVEL -> PWM_SET
+	40 -> WAIT
+END

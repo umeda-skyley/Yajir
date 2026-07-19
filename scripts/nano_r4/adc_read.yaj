@@ -1,0 +1,9 @@
+// A0の電圧をNano R4の14-bit ADCで読み、0から16383の値を表示します。
+// A0へ0Vから5Vの範囲を超える電圧を入力しないでください。
+
+def_alias(A0_PIN, 14)
+
+MAIN
+	A0_PIN -> ADC_PIN -> STDOUT
+	250 -> WAIT
+END

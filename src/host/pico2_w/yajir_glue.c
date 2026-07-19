@@ -511,6 +511,7 @@ void host_register_all(void)
     reg_const("GPIO_IRQ_FALL", YAJIR_GPIO_IRQ_FALL);
     reg_const("GPIO_IRQ_HIGH", YAJIR_GPIO_IRQ_HIGH);
     reg_const("GPIO_IRQ_LOW", YAJIR_GPIO_IRQ_LOW);
+    reg_const("ADC_MAX", 4095);
     reg_const("PWM_MAX", YAJIR_PWM_LEVEL_MAX);
     reg_const("PWM_DEFAULT_FREQ", YAJIR_PWM_DEFAULT_HZ);
 }

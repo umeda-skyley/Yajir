@@ -1,0 +1,21 @@
+// Nano R4のRGB LEDで基本色と合成色を順番に表示します。
+// USB serialへ貼り付け、次の行で @run を送ってください。
+
+MAIN
+	1, 0, 0 -> RGB_LED
+	300 -> WAIT
+	0, 1, 0 -> RGB_LED
+	300 -> WAIT
+	0, 0, 1 -> RGB_LED
+	300 -> WAIT
+	1, 1, 0 -> RGB_LED
+	300 -> WAIT
+	0, 1, 1 -> RGB_LED
+	300 -> WAIT
+	1, 0, 1 -> RGB_LED
+	300 -> WAIT
+	1, 1, 1 -> RGB_LED
+	300 -> WAIT
+	0, 0, 0 -> RGB_LED
+	300 -> WAIT
+END

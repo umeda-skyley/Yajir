@@ -20,10 +20,10 @@ Thumbs.db
 .DS_Store
 
 # local design notes
-docs/pico2_w_plan.md
-docs/script_spec_v47.md
-docs/script_drive_import_idea.md
-docs/state_machine_idea.md
+docs/work/
+
+# local board upload helpers
+src/host/nano_r4/upload.cmd
 
 # CubeMX生成のmain.c（STMicroのテンプレート由来・コピーライト表記あり）は非公開に留める
 src/host/stm32_l476/main.c
@@ -33,3 +33,4 @@ script_spec_v*.md
 
 # 作業規約メモ（Claude Code 用の恒久指示）はローカルのみ・非push。
 CLAUDE.md
+AGENTS.md
