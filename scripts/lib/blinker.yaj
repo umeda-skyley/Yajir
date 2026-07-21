@@ -1,0 +1,48 @@
+// blinker.yaj - Yajir ライブラリのサンプル（def_import で取り込む, v0.4.10）
+//
+// ライブラリに書けるのは「INIT/MAIN 以外」＝ def_alias / def_handler / def_port / def_local と
+// ON / PORT 本体。INIT が書けないので、初期化は「開始ハンドラを公開して、アプリの INIT から
+// 蹴ってもらう」作法にする（これがライブラリ側の定石）。
+//
+// 使い方（アプリ側）:
+//     def_import("blinker")         // ★ファイル最上部・他の宣言より前
+//     def_handler(BLINK_EVENT)      // 任意。受け取りたいときだけ宣言する
+//     INIT
+//         300 -> BLINK_MS           // エクスポートされた別名で周期を設定
+//         none -> BLINK_START
+//     END
+//     ON BLINK_EVENT                // 任意。書かなければ点滅だけ動く
+//         ...
+//     END
+//
+// ★使用スロット（マニュアル記載ルール）: GVAR[6] / GVAR[7]
+//   別名は「名前」を予約するが「添字」は予約しない。アプリが生で GVAR[7] を使うと衝突するし、
+//   それはコンパイラには見えない。だからライブラリは使用スロットを必ず明記すること。
+
+def_alias(BLINK_MS, GVAR[7])      // エクスポート: 点滅周期ms（アプリが書き換えてよい）
+def_alias(BLINK_ON, GVAR[6])      // エクスポート: 0=停止 / 1=動作中
+
+def_handler(BLINK_START)
+def_handler(BLINK_STOP)
+def_handler(BLINK_TICK)           // 内部用（自走の折り返し点）
+
+ON BLINK_START
+    (BLINK_MS == 0) -> IFYES
+        200 -> BLINK_MS           // アプリが設定していなければ既定値
+    END
+    1 -> BLINK_ON
+    none -> BLINK_TICK AFTER BLINK_MS
+END
+
+ON BLINK_STOP
+    0 -> BLINK_ON                 // 次の TICK が自走を断つ
+END
+
+ON BLINK_TICK
+    (BLINK_ON == 0) -> IFYES
+        EXIT                      // 停止中＝ここで自走の鎖を切る
+    END
+    NOT LED1 -> LED1
+    "BLINK_EVENT" -> INVOKER      // weak link: アプリが ON BLINK_EVENT を書いていれば呼ばれる
+    none -> BLINK_TICK AFTER BLINK_MS
+END

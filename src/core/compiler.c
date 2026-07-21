@@ -33,6 +33,18 @@ typedef struct {
 static parser_t P;
 static script_error_t s_error;   /* 直近のロード失敗（構造化, v0.3.7 §11） */
 
+/* ---- def_import（ライブラリ取り込み, §13 v0.4.10）のコンパイル時状態 ----
+ * ライブラリ本文はホストが供給し（script_register_import）、コンパイラはその場で本体と同じ
+ * トップレベル解析に流す。原文は解析中しか要らない（append-only 生成＋文字列はプールへ intern 済み）
+ * ので、コアは1バイトも保持しない。入れ子import禁止ゆえ退避は1段で足り、再帰も動的確保も要らない。
+ * import は本体スクリプトの最上部限定 → ライブラリの def_alias は先に表へ入り「インポート側からは
+ * 見えるが、ライブラリからは本体の名前が見えない」一方向エクスポートが時系列だけで成立する。 */
+static int  s_in_import;                                /* ライブラリ本文を解析中か（入れ子/INIT/MAIN の禁止判定） */
+static char s_src_name[CFG_MAX_NAME];                   /* 現在のソース名（""=本体）。エラーに添える（§11） */
+static char s_imported[CFG_MAX_IMPORTS][CFG_MAX_NAME];  /* 取り込み済みの名前（二重 import は冪等 no-op） */
+static int  s_nimported;
+static int  s_top_seen;                                 /* 本体で def_import 以外の単位を読んだか（最上部強制） */
+
 /* ---- エイリアス（def_alias v0.3.8 ／ def_local v0.4.6）。純コンパイル時の名前解決＝VM は一切関与しない ----
  * def_alias（大域・ファイル冒頭）: GVAR/SGVAR（読み書き可）・数値・文字列（読取専用）。
  * def_local（局所・ブロック冒頭・END まで）: VAR/SVAR（読み書き可）・ARG/SARG（読取専用）・数値・文字列。
@@ -134,6 +146,9 @@ static void fail_e(int line, script_err_t code, int aux, const char *tok)
     s_error.aux  = (int16_t)aux;
     if (tok) { strncpy(s_error.tok, tok, CFG_MAX_NAME - 1); s_error.tok[CFG_MAX_NAME - 1] = '\0'; }
     else     s_error.tok[0] = '\0';
+    /* 行番号がどのソースのものか（""=本体 / 非空=ライブラリ名, §13 v0.4.10）。ここが唯一の絞り口。 */
+    strncpy(s_error.src_name, s_src_name, CFG_MAX_NAME - 1);
+    s_error.src_name[CFG_MAX_NAME - 1] = '\0';
     longjmp(P.jb, 1);
 }
 static void fail(int line, script_err_t code)                      { fail_e(line, code, 0, NULL); }
@@ -1113,12 +1128,114 @@ static void reset_program(void)
     m->timer_overflow = false;
     memset(m->delay, 0, sizeof(m->delay));   /* 遅延post の pending 表（§10, v0.4.7） */
     s_nalias = 0;   /* エイリアス表もロードごとにクリア（v0.3.8） */
+    /* def_import の取り込み状態もロードごとに初期化（§13, v0.4.10） */
+    s_in_import = 0;
+    s_src_name[0] = '\0';
+    s_nimported = 0;
+    s_top_seen = 0;
 }
 
 static void top_level_unexpected(void)   /* 先頭で INIT/MAIN/ON/def_* 以外（v0.3.7） */
 {
     if (is_kw("END")) fail(P.cur.line, ERR_UNEXPECTED_END);   /* 対応ヘッダの無い END */
     fail(P.cur.line, ERR_SYNTAX);
+}
+
+static void parse_units_to_eof(void);   /* トップレベル解析ループ（def_import と相互再帰・1段のみ） */
+
+/* def_import("NAME") を解析し、ホストから貰ったライブラリ本文をその場で取り込む（§13, v0.4.10）。
+ *
+ * ライブラリに書けるのは「INIT/MAIN 以外」＝ def_alias/def_handler/def_port/def_local と
+ * ON/PORT 本体。INIT は複数ブロックの合成、MAIN は1本きり、という構造上の理由で禁止（初期化は
+ * def_handler(LIB_INIT) を用意させ、インポート側の INIT から `none -> LIB_INIT` を蹴る作法）。
+ * ライブラリ→アプリの呼び戻しは INVOKER（未登録名は黙って無視＝weak link）で疎結合にする。
+ *
+ * 退避するのはレキサ位置と先読みトークンだけ。def_import は宣言位置＝ブロック外にしか書けない
+ * ので nest/repeat_depth/cur_port_* は全て 0 であり、コード生成も append-only ＝ ソースを
+ * 後戻りして読み返さない。だから「1段の退避」で足りる（入れ子禁止のご褒美）。 */
+static void parse_def_import(void)
+{
+    char name[CFG_MAX_NAME];
+    int line = P.cur.line, i;
+    const char *lib_src = NULL;
+    uint32_t lib_len = 0;
+    script_import_fn fn = vm()->import_fn;
+    lexer_t save_lx;
+    token_t save_cur;
+
+    adv();                                  /* "def_import" を消費 */
+    expect(T_LPAREN, "'('");
+    if (P.cur.type != T_STRING) fail(P.cur.line, ERR_SYNTAX);   /* ライブラリ名は文字列リテラル */
+    strncpy(name, vm_str(P.cur.str_off), CFG_MAX_NAME - 1); name[CFG_MAX_NAME - 1] = '\0';
+    adv();
+    expect(T_RPAREN, "')'");
+    expect_newline();
+
+    if (s_in_import) fail_tok(line, ERR_SYNTAX, name);   /* 入れ子 import は禁止（退避を1段に保つ） */
+    if (s_top_seen)  fail_tok(line, ERR_SYNTAX, name);   /* 他の宣言/ブロックより前＝ファイル最上部のみ */
+
+    for (i = 0; i < s_nimported; i++)
+        if (strcmp(s_imported[i], name) == 0) return;    /* 同じライブラリの二重 import は冪等 no-op */
+
+    if (!fn) fail_tok(line, ERR_NO_IMPORT, name);        /* このプラットフォームは import 非対応 */
+    if (fn(name, &lib_src, &lib_len) != 0 || !lib_src)
+        fail_tok(line, ERR_IMPORT_NOT_FOUND, name);      /* 黙って無視しない＝実行時に持ち越さない */
+
+    if (s_nimported < CFG_MAX_IMPORTS) {
+        strncpy(s_imported[s_nimported], name, CFG_MAX_NAME - 1);
+        s_imported[s_nimported][CFG_MAX_NAME - 1] = '\0';
+        s_nimported++;
+    }
+
+    save_lx = P.lx; save_cur = P.cur;       /* 退避（1段） */
+    s_in_import = 1;
+    strncpy(s_src_name, name, CFG_MAX_NAME - 1); s_src_name[CFG_MAX_NAME - 1] = '\0';
+
+    lex_init(&P.lx, lib_src, (size_t)lib_len);
+    adv();
+    parse_units_to_eof();                   /* ライブラリ本文を本体と同じ解析に流す */
+
+    s_in_import = 0;
+    s_src_name[0] = '\0';                   /* 以後のエラーは本体スクリプトの行 */
+    P.lx = save_lx; P.cur = save_cur;        /* 復帰（原文は以後不要＝コアは保持しない） */
+}
+
+/* トップレベル1単位（def_* / INIT / MAIN / ON / PORT）を消費。本体とライブラリで共有する。 */
+static void parse_top_level_unit(void)
+{
+    if (P.cur.type != T_IDENT) top_level_unexpected();
+
+    if (is_kw("def_import")) { parse_def_import(); return; }        /* ここだけ s_top_seen を立てない */
+    if (!s_in_import) s_top_seen = 1;   /* 本体で1単位読んだ＝以後 def_import は書けない（最上部強制） */
+
+    if (is_kw("def_alias"))   { parse_def_alias();   return; }   /* コンパイラが解釈する def_（v0.3.8） */
+    if (is_kw("def_handler")) { parse_def_handler(); return; }   /* 同上・ハンドラ源宣言（v0.4.1） */
+    if (is_kw("def_port"))    { parse_def_port();    return; }   /* 同上・スクリプト内ポート宣言（v0.4.5） */
+    if (is_kw("def_local"))   fail(P.cur.line, ERR_SYNTAX);      /* def_local はブロック冒頭のみ（ファイル冒頭不可, v0.4.6） */
+    if (!strncmp(P.cur.text, "def_", 4)) { skip_def_line(); return; }  /* 他の def_ は非解釈（写し） */
+
+    /* INIT/MAIN はライブラリに書けない（§13, v0.4.10）。MAIN は1本きり、INIT は複数ブロックの
+     * 合成が要る＝append-only 生成と噛み合わない。ライブラリの初期化はハンドラで公開させる。 */
+    if (is_kw("INIT")) {
+        if (s_in_import) fail(P.cur.line, ERR_SYNTAX);
+        P.open_line = P.cur.line; adv(); parse_simple_block(BLK_INIT);
+    }
+    else if (is_kw("MAIN")) {
+        if (s_in_import) fail(P.cur.line, ERR_SYNTAX);
+        P.open_line = P.cur.line; adv(); parse_simple_block(BLK_MAIN);
+    }
+    else if (is_kw("ON")) { P.open_line = P.cur.line; adv(); parse_on_block(); }
+    else if (is_kw("PORT")) { P.open_line = P.cur.line; adv(); parse_port_block(); }   /* スクリプト内ポート本体（v0.4.5） */
+    else top_level_unexpected();
+}
+
+static void parse_units_to_eof(void)
+{
+    for (;;) {
+        skip_newlines();
+        if (P.cur.type == T_EOF) break;   /* ライブラリの EOF＝取り込み終了（呼び元へ戻る） */
+        parse_top_level_unit();
+    }
 }
 
 int compiler_compile(const char *src, size_t len)
@@ -1138,22 +1255,7 @@ int compiler_compile(const char *src, size_t len)
     }
 
     adv();
-    for (;;) {
-        skip_newlines();
-        if (P.cur.type == T_EOF) break;
-        if (P.cur.type != T_IDENT) top_level_unexpected();
-
-        if (is_kw("def_alias"))   { parse_def_alias();   continue; }   /* コンパイラが解釈する def_（v0.3.8） */
-        if (is_kw("def_handler")) { parse_def_handler(); continue; }   /* 同上・ハンドラ源宣言（v0.4.1） */
-        if (is_kw("def_port"))    { parse_def_port();    continue; }   /* 同上・スクリプト内ポート宣言（v0.4.5） */
-        if (is_kw("def_local"))   fail(P.cur.line, ERR_SYNTAX);        /* def_local はブロック冒頭のみ（ファイル冒頭不可, v0.4.6） */
-        if (!strncmp(P.cur.text, "def_", 4)) { skip_def_line(); continue; }  /* 他の def_ は非解釈（写し） */
-        if (is_kw("INIT")) { P.open_line = P.cur.line; adv(); parse_simple_block(BLK_INIT); }
-        else if (is_kw("MAIN")) { P.open_line = P.cur.line; adv(); parse_simple_block(BLK_MAIN); }
-        else if (is_kw("ON")) { P.open_line = P.cur.line; adv(); parse_on_block(); }
-        else if (is_kw("PORT")) { P.open_line = P.cur.line; adv(); parse_port_block(); }   /* スクリプト内ポート本体（v0.4.5） */
-        else top_level_unexpected();
-    }
+    parse_units_to_eof();
 
     /* スクリプト内ポート: 本体存在チェック＋呼び出しグラフ判定（§3 v0.4.5・全ブロックのコンパイル後）。 */
     {

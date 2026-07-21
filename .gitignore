@@ -21,3 +21,6 @@ script_spec_v*.md
 
 # 作業規約メモ（Claude Code 用の恒久指示）はローカルのみ・非push。
 CLAUDE.md
+
+# 設計検討メモ（*.local.md）はローカルのみ・非push。実装前の技術メモ置き場。
+*.local.md

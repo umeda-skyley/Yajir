@@ -60,6 +60,42 @@ static void led1_set(int argc, const script_value_t *a)
     script_set_result(g_led1);   /* 現在値を産出（int → RESULT） */
 }
 
+/* ---- def_import: ライブラリの所在＝ホストの領分（§13, v0.4.10）----
+ * PC版は「ローカルファイル <名前>.yaj」方式。def_import("blinker") → blinker.yaj を読む。
+ * 実機（stm32_l476/yajir_libs.h）は Flash 常駐の const char[] 表を引く方式で、コアからは
+ * どちらも同じ1本の関数に見える＝所在の決め方をホストごとに変えられる、というのが狙い。
+ *
+ * バッファは1本で足りる: 入れ子 import は禁止＝同時に開くライブラリは1つ、しかもコンパイラは
+ * ソースを後戻りして読まないので、解析が終われば原文は不要（実機がバッファを持たずに済むのと同じ理屈）。 */
+static char g_libbuf[4096];
+static int pc_import(const char *name, const char **src, uint32_t *len)
+{
+    /* 探索順: カレント直下 → scripts/lib/（リポジトリ直下から実行したとき用） */
+    static const char *const dirs[] = { "", "scripts/lib/" };
+    char path[256];
+    size_t i, n;
+    for (i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
+        FILE *f;
+        snprintf(path, sizeof path, "%s%s.yaj", dirs[i], name);
+        f = fopen(path, "rb");
+        if (!f) continue;
+        n = fread(g_libbuf, 1, sizeof(g_libbuf), f);
+        if (n >= sizeof(g_libbuf)) {   /* 切り詰めた本文を渡すと嘘の構文エラーになる。無かった事にする */
+            fclose(f);
+            fprintf(stderr, "[script] library '%s' is larger than the import buffer (%u bytes)\n",
+                    name, (unsigned)sizeof(g_libbuf));
+            return -1;
+        }
+        fclose(f);
+        g_libbuf[n] = '\0';
+        printf("[script] import '%s' <- %s (%u bytes)\n", name, path, (unsigned)n);
+        *src = g_libbuf;
+        *len = (uint32_t)n;
+        return 0;
+    }
+    return -1;   /* 見つからない → コアが ERR_IMPORT_NOT_FOUND でロード失敗にする */
+}
+
 /* ---- def_* 行に対応する束縛（マクロの実体）---- */
 void host_register_all(void)
 {
@@ -74,6 +110,7 @@ void host_register_all(void)
      * did-you-mean 候補は host_diag の g_builtin_names 側で持つ（コア builtin 扱い）。 */
     script_register_now(get_tick);
     script_register_stdout(pc_puts);
+    script_register_import(pc_import);   /* def_import の実体＝ローカルファイル（v0.4.10） */
 
     reg_handler("UART1");
     reg_handler("BTN");

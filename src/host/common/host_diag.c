@@ -25,6 +25,8 @@ const char *script_strerror(script_err_t code)
         case ERR_TOO_MANY_PORTS: return "too many ports (def_handler/def_port exceeded the port table)";
         case ERR_RECURSION:      return "recursive script port call (cycle)";
         case ERR_NO_CLOCK:       return "no clock registered (call script_register_now)";
+        case ERR_NO_IMPORT:      return "def_import not supported here (no import function registered)";
+        case ERR_IMPORT_NOT_FOUND: return "library not found";
         case ERR_SYNTAX:         return "syntax error";
     }
     return "load error";

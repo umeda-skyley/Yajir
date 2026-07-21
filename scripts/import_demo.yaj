@@ -1,0 +1,31 @@
+// import_demo.yaj - def_import でライブラリを取り込むデモ（v0.4.10）
+//
+// PCで試す: build\script.exe run scripts\import_demo.yaj 5
+//   ライブラリは scripts/lib/blinker.yaj から読まれる（PCホスト＝ファイル方式）。
+//   実機では同じ名前が Flash 常駐の表（stm32_l476/yajir_libs.h）から引かれる。
+//   スクリプトは「所在」を知らない ── そこがホスト注入にしてある理由。
+
+def_import("blinker")             // ★最上部。他の宣言/ブロックより前にだけ書ける
+
+def_handler(BLINK_EVENT)          // ライブラリからの呼び戻しを受け取る（書かなければ点滅だけ動く）
+def_alias(COUNT, GVAR[0])         // ライブラリは GVAR[6]/GVAR[7] を使う（blinker.yaj の記載を参照）
+
+INIT
+    "-- def_import demo --" -> STDOUT
+    300 -> BLINK_MS               // ライブラリがエクスポートした別名
+    none -> BLINK_START AFTER 10  // ライブラリがエクスポートしたハンドラ（INIT からは AFTER で張る, §10）
+END
+
+MAIN
+    1000000 -> WAIT               // MAIN は空。時間はライブラリの自走ハンドラが運ぶ
+END
+
+// ライブラリは "BLINK_EVENT" を INVOKER で叩くだけ＝互いの名前を静的に知らない（疎結合）
+ON BLINK_EVENT
+    COUNT + 1 -> COUNT
+    "blink #", COUNT -> STDOUT
+    (COUNT == 8) -> IFYES
+        "-- stop --" -> STDOUT
+        none -> BLINK_STOP
+    END
+END

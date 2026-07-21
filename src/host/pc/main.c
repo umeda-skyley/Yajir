@@ -85,7 +85,10 @@ int main(int argc, char **argv)
     if (script_load(src, len) != 0) {
         /* (B)方針：コアは構造化エラーだけ返す。表示文は host 側（host_diag）で組む。 */
         const script_error_t *e = script_last_error();
-        fprintf(stderr, "load error: line %d: %s", e->line, script_strerror(e->code));
+        /* src_name 非空＝def_import で取り込んだライブラリ内の行（本体の行番号ではない, v0.4.10） */
+        if (e->src_name[0]) fprintf(stderr, "load error: in library '%s' line %d: %s",
+                                    e->src_name, e->line, script_strerror(e->code));
+        else                fprintf(stderr, "load error: line %d: %s", e->line, script_strerror(e->code));
         if (e->tok[0]) fprintf(stderr, " '%s'", e->tok);
         if (e->code == ERR_END_EXPECTED && e->aux)
             fprintf(stderr, " (block opened at line %d)", e->aux);
