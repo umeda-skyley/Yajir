@@ -173,6 +173,13 @@ static void th_stdout_core(int argc, const script_value_t *a)
     m->stdout_puts("\r\n");
 }
 
+/* def_import のライブラリ取得（§13, v0.4.10）。ライブラリの所在＝ホストの領分なので、
+ * コアは構文だけ持ちここで実体を受け取る。未登録なら def_import は ERR_NO_IMPORT。 */
+void script_register_import(script_import_fn fn)
+{
+    vm()->import_fn = fn;
+}
+
 /* STDOUT: ホストは出力先（シンク）だけを渡す。ループ/タグ判定/int→10進/改行はコアが持つ（§11, v0.4.8）。 */
 void script_register_stdout(script_puts_fn puts_fn)
 {

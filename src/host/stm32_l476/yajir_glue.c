@@ -10,6 +10,7 @@
 #include "yajir_glue.h"
 #include "script.h"
 #include "host_diag.h"   /* host_diag_reset / host_diag_note（did-you-mean 候補収集） */
+#include "yajir_libs.h"  /* def_import 用の Flash 常駐ライブラリ表（v0.4.10） */
 
 /* Nucleo-L476RG のボード割り当て
  * B1（PC13・青）は EXTI から yajir_post_button() でイベント源 BTN として発火する。
@@ -59,6 +60,24 @@ static void th_delay(int argc, const script_value_t *a)
     if (ms > 0) HAL_Delay((uint32_t)ms);
 }
 
+/* ---- def_import: ライブラリの所在＝ホストの領分（§13, v0.4.10）----
+ * 実機は Flash 常駐の表（yajir_libs.h）を名前で引くだけ。本文は const char[] ＝ Flash なので、
+ * 取り込みに RAM を1バイトも使わない（PC版は同じ関数をローカルファイル読みで実装している）。
+ * この関数を登録しなければ、def_import を含むスクリプトは ERR_NO_IMPORT でロード失敗する
+ * ＝「import 非対応プラットフォーム」を表明したことになる。 */
+static int yajir_import(const char *name, const char **src, uint32_t *len)
+{
+    int i;
+    for (i = 0; i < YAJIR_NLIBS; i++) {
+        if (strcmp(name, YAJIR_LIBS[i].name) == 0) {
+            *src = YAJIR_LIBS[i].src;
+            *len = (uint32_t)strlen(YAJIR_LIBS[i].src);
+            return 0;
+        }
+    }
+    return -1;   /* 見つからない → コアが ERR_IMPORT_NOT_FOUND でロード失敗にする */
+}
+
 /* ---- 束縛一覧（PC版 host_register_all と同じ顔ぶれの実機版） ---- */
 void host_register_all(void)
 {
@@ -71,6 +90,7 @@ void host_register_all(void)
     /* コア昇格した2つ（v0.4.8）。NOW=SysTick ms（内部クロックの源）、STDOUT=USART2 へのシンク。 */
     script_register_now(get_tick);        /* HAL_GetTick */
     script_register_stdout(yajir_puts);   /* シグネチャ void(const char*) が一致 */
+    script_register_import(yajir_import); /* def_import の実体＝Flash常駐の表（v0.4.10） */
 
     /* イベント源（ハンドラ）。本体は ON BTN / ON UART1 としてスクリプトに書く。
      *   - BTN  : ボタンEXTI ISR が yajir_post_button() で発火（次tickで ON BTN）

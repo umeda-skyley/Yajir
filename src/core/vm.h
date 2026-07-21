@@ -173,6 +173,8 @@ typedef struct {
      *   stdout_puts : STDOUT のシンク。出力ポリシー本体はコアの th_stdout_core が持つ。 */
     in_fn_t  now_fn;
     void   (*stdout_puts)(const char *s);
+    /* def_import のライブラリ取得（§13, v0.4.10）。コンパイル時にだけ呼ばれる。NULL=import非対応。 */
+    script_import_fn import_fn;
 
     /* バイトコードと文字列プール */
     uint8_t code[CFG_CODE_SIZE];

@@ -24,7 +24,7 @@
 
 /* Yajir 言語/実装バージョン。スクリプトからは入力ポート VERSION（str産出）で、
  * ホストからは script_version() で読める（§11, v0.4）。 */
-#define SCRIPT_VERSION "0.4.9"
+#define SCRIPT_VERSION "0.4.10"
 
 /* 出力ポートが受け取る値（型タグ付き）。SV_INTは数値、SV_STRは script_str()で文字列に
  * 解決して出力する（v0.4.2でCHARタグ撤去＝値は int/str の2択・§9。数を文字グリフで出すのは
@@ -36,6 +36,12 @@ typedef int32_t (*script_in_fn)(void);
 /* STDOUT のシンク（1文字列を出力）。コアが出力ポリシー（ループ/タグ判定/int→10進/改行）を
  * 所有し、ホストはこの関数＝出力先だけを渡す（§11, v0.4.8）。 */
 typedef void    (*script_puts_fn)(const char *s);
+/* def_import("NAME") が呼ぶライブラリ取得（§13, v0.4.10）。ライブラリの所在はホスト依存
+ * （Flash常駐の const char[] 表／ファイル／フラッシュFS…）なので、コアは構文だけ持ち、
+ * 実体はこの1本の注入で受け取る。本文は「コンパイル中だけ」有効ならよい（コアは原文を保持しない）。
+ *   戻り値: 0=見つかった（*src/*len に本文）／<0=その名前は無い（ERR_IMPORT_NOT_FOUND）
+ * 未登録（＝この関数を渡さない）＝importをサポートしないプラットフォーム（ERR_NO_IMPORT）。 */
+typedef int     (*script_import_fn)(const char *name, const char **src, uint32_t *len);
 
 /* ポートの産出型（§3, §11, v0.3.8）。in/inout は登録時に必須指定（out/handler は産出none）。
  * int産出は RESULT 経由、str産出は SRESULT 経由（script_set_result / script_set_sresult）。 */
@@ -64,6 +70,9 @@ void script_register_now(script_in_fn tick);
 /* STDOUT: 出力シンクだけを渡す。ループ/タグ判定/int→10進/改行のポリシーはコアが持つ（§11, v0.4.8）。
  * 任意（未登録なら STDOUT ポートは無く、-> STDOUT はコンパイル時 ERR_UNKNOWN_PORT）。 */
 void script_register_stdout(script_puts_fn puts_fn);
+/* def_import: ライブラリ取得関数を渡す（§13, v0.4.10）。任意＝未登録ならスクリプト中の
+ * def_import は ERR_NO_IMPORT でロード失敗する（黙って無視はしない）。 */
+void script_register_import(script_import_fn fn);
 /* script: スクリプト内ポート（def_port）。本体は PORT ブロック（コンパイラが bc_start を後埋め）。
  * inout 同格・産出型必須・両辺可でチェイン可（§3, §7, v0.4.5）。 */
 void script_register_script_port(const char *name, script_type_t out_type);
@@ -127,6 +136,8 @@ typedef enum {
     ERR_TOO_MANY_PORTS,  /* スクリプト def_handler/def_port でポート表が満杯（§3, v0.4.1/v0.4.5） */
     ERR_RECURSION,       /* スクリプト内ポートの再帰サイクル（§3, v0.4.5・load時DFS）。tok=サイクル上のポート名 */
     ERR_NO_CLOCK,        /* 内部クロック未登録（§8, v0.4.8）。script_register_now を呼び忘れ＝時間が動かない */
+    ERR_NO_IMPORT,       /* def_import があるがホストが取得関数を注入していない（§13, v0.4.10）。tok=ライブラリ名 */
+    ERR_IMPORT_NOT_FOUND,/* 取得関数はあるがその名前のライブラリが無い（§13, v0.4.10）。tok=ライブラリ名 */
     ERR_SYNTAX           /* 上記に当てはまらない構文崩れ（受け皿） */
 } script_err_t;
 
@@ -135,6 +146,9 @@ typedef struct {
     script_err_t code;
     int16_t      aux;              /* 補助。LERR_END_EXPECTED の開きヘッダ行 等。無ければ0 */
     char         tok[CFG_MAX_NAME]; /* 問題トークン断片（"HOSTCMP" 等）。無ければ空文字 */
+    /* どのソースの line か（§13, v0.4.10）。空文字＝本体スクリプト、非空＝その名前のライブラリ内。
+     * def_import で行番号が2つのソースに分かれるので、表示側はこれを添える。 */
+    char         src_name[CFG_MAX_NAME];
 } script_error_t;
 
 /* --- スクリプト全文を受信→コンパイル＆差し替え。RAM常駐・揮発（§11） --- */

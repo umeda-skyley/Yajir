@@ -60,13 +60,14 @@ VERSION    -> STDOUT          # → 0.4.2
 
 `STATUS` と AND して、どのエラーが立っているか調べるための定数です（読み取り専用）。
 
-|定数|意味|
-|-|-|
-|`ERR_QUEUE_OVF`|イベントキュー溢れ|
-|`ERR_TIMER_FULL`|タイマ枠が一杯|
-|`ERR_DIVZERO`|ゼロ除算が起きた|
-|`ERR_STR_TRUNC`|文字列が切り詰められた|
-|`ERR_BUDGET`|`REPEAT` が命令数上限で打ち切られた（v0.4.4）|
+|定数|ビット|意味|
+|-|-|-|
+|`ERR_QUEUE_OVF`|`0x01`|イベントキュー溢れ|
+|`ERR_TIMER_FULL`|`0x02`|タイマ枠が一杯|
+|`ERR_DIVZERO`|`0x04`|ゼロ除算・ゼロ剰余が起きた|
+|`ERR_STR_TRUNC`|`0x08`|文字列が切り詰められた|
+|`ERR_BUDGET`|`0x10`|`REPEAT` が命令数上限で打ち切られた（v0.4.4）|
+|`ERR_DELAY_FULL`|`0x20`|遅延post（`AFTER`）の pending 表が満杯で新着を捨てた（v0.4.7）|
 
 ```
 STATUS -> GVAR[0]
@@ -329,6 +330,150 @@ END
 > `def_alias` = 大域（`GVAR`/`SGVAR`/リテラル・ファイル冒頭）、`def_local` = 局所
 > （`VAR`/`SVAR`/`ARG`/`SARG`/リテラル・ブロック冒頭）。対象がきれいに分かれています。
 
+## ライブラリの取り込み `def_import`（v0.4.10）
+
+共通処理（機器ドライバ相当・プロトコル処理・定型の状態機械）を**別のスクリプトに切り出して使い回す**ための宣言です。
+
+```
+def_import("blinker")        # ★ファイル最上部。他の宣言/ブロックより前にだけ書ける
+```
+
+取り込まれたライブラリは、**その場で本体と一緒にコンパイルされます**。実行時には1つのプログラムになるので、
+呼び出しコストも余分なRAMもありません。
+
+### ライブラリの置き場所はホストが決めます
+
+コアは「取り込む」という構文だけを持ち、**名前から本文を引く方法はホストが供給**します。参照実装では:
+
+| ホスト | `def_import("blinker")` が読むもの |
+|---|---|
+| PC | ローカルファイル `blinker.yaj`（カレント → `scripts/lib/` の順に探索） |
+| STM32 | Flash 常駐の `const char[]` 表（`src/host/stm32_l476/yajir_libs.h`）から名前で検索 |
+
+スクリプト側は所在を知りません。**同じ1行が、PCではファイル、実機ではFlashを指します**。
+実機ではライブラリが Flash に載ったまま読まれるので、取り込みに RAM を使いません。
+
+> ホストが取得関数を用意していないプラットフォームでは、`def_import` を含むスクリプトは
+> **ロード時に失敗します**（`ERR_NO_IMPORT`）。名前が見つからないときは `ERR_IMPORT_NOT_FOUND`。
+> 黙って無視はしません（ハンドラが無いまま走るスクリプトを作らないため）。
+
+### ルール
+
+- **書ける場所**: ファイルの**最上部のみ**。他の `def_*` や `INIT`/`MAIN`/`ON`/`PORT` より前。複数並べて可
+- **ライブラリに書けるもの**: `def_alias` / `def_handler` / `def_port` / `def_local` と `ON …` / `PORT …` 本体
+- **ライブラリに書けないもの**: `INIT` / `MAIN`（`MAIN` は1本きり・`INIT` は合成できないため）、**入れ子の `def_import`**
+- 同じライブラリを2回書いても**1回だけ取り込まれます**（冪等）
+- ライブラリ内でエラーが起きたときは、**そのライブラリ名とライブラリ内の行番号**で報告されます
+
+### 何がアプリ側から見えるか
+
+ライブラリの `def_alias` / `def_handler` / `def_port` は、**取り込んだ側からそのまま使えます**（大域エクスポート）。
+逆に、**ライブラリからはアプリ側の名前が見えません**（`def_import` が最上部なので、アプリの宣言はまだ読まれていない）。
+依存の向きが一方通行に保たれます。
+
+```
+def_import("blinker")
+
+INIT
+    300 -> BLINK_MS               # ライブラリがエクスポートした別名
+    none -> BLINK_START AFTER 10  # ライブラリがエクスポートしたハンドラ
+END
+```
+
+名前がぶつかった場合（アプリが同名の `def_alias` を作った等）は**ロード時エラー**になります。
+
+---
+
+### ライブラリの書き方（推奨パターン）
+
+`scripts/lib/blinker.yaj` が実例です。次の4点を守ると素直なライブラリになります。
+
+**(1) 初期化は「開始ハンドラ」を公開して、アプリの `INIT` から蹴ってもらう**
+
+ライブラリに `INIT` は書けません。代わりに開始用のハンドラ源を公開します。
+
+```
+def_handler(BLINK_START)
+
+ON BLINK_START
+    1 -> BLINK_ON
+    none -> BLINK_TICK AFTER BLINK_MS
+END
+```
+
+> **注意**: アプリ側は `none -> BLINK_START AFTER 10` と**`AFTER` を付けて**蹴ってください。
+> `INIT` からの即時 post は INIT→実行フェーズの切り替えで破棄されるため、`AFTER` を付けないと
+> **何も起きません**（`AFTER 10` のように小さい値で構いません）。
+
+**(2) 設定値・状態は `def_alias` でエクスポートし、使用スロットを必ず明記する**
+
+```
+def_alias(BLINK_MS, GVAR[7])      # エクスポート: 周期ms（アプリが設定してよい）
+def_alias(BLINK_ON, GVAR[6])      # エクスポート: 0=停止 / 1=動作中
+```
+
+> 別名は「名前」を予約しますが、**「添字」は予約しません**。アプリが生で `0 -> GVAR[7]` と書けば
+> 衝突しますし、コンパイラはそれを検出できません。**使用スロットはライブラリの冒頭コメントに必ず書く**
+> ——これがライブラリ作者の責任範囲です。
+
+**(3) アプリへの通知は `INVOKER` で（weak link）**
+
+ライブラリはアプリのハンドラ名を静的に知りません。**文字列名で叩くだけ**にします。
+
+```
+"BLINK_EVENT" -> INVOKER          # アプリが受けていれば呼ばれる。無ければ黙って無視
+```
+
+アプリ側は**受け取りたいときだけ**次を書きます（書かなくてもライブラリは動きます）。
+
+```
+def_handler(BLINK_EVENT)
+
+ON BLINK_EVENT
+    "blink!" -> STDOUT
+END
+```
+
+**(4) 名前にはプレフィクスを付ける**
+
+エクスポートする名前（別名・ハンドラ源・ポート）は全て大域名前空間に入ります。
+`BLINK_MS` / `BLINK_START` のように**ライブラリ名を冠する**と、複数ライブラリを併用しても衝突しません。
+
+---
+
+これらをまとめた最小のライブラリ:
+
+```
+# blinker.yaj —— 使用スロット: GVAR[6] / GVAR[7]
+def_alias(BLINK_MS, GVAR[7])
+def_alias(BLINK_ON, GVAR[6])
+
+def_handler(BLINK_START)
+def_handler(BLINK_STOP)
+def_handler(BLINK_TICK)
+
+ON BLINK_START
+    (BLINK_MS == 0) -> IFYES
+        200 -> BLINK_MS
+    END
+    1 -> BLINK_ON
+    none -> BLINK_TICK AFTER BLINK_MS
+END
+
+ON BLINK_STOP
+    0 -> BLINK_ON
+END
+
+ON BLINK_TICK
+    (BLINK_ON == 0) -> IFYES
+        EXIT                      # 停止中＝自走の鎖をここで切る
+    END
+    NOT LED1 -> LED1
+    "BLINK_EVENT" -> INVOKER
+    none -> BLINK_TICK AFTER BLINK_MS
+END
+```
+
 ## 時間を扱う（v0.4.7）
 
 組み込みの本体は「時間をどう扱うか」です。Yajir には次の道具があります。
@@ -405,4 +550,4 @@ END
 
 ---
 
-最終更新: Yajir v0.4.7 時点の組み込みポート。
+最終更新: Yajir v0.4.10 時点の組み込みポート。

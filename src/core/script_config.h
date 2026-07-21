@@ -64,6 +64,10 @@
 #ifndef CFG_MAX_ALIAS
 #define CFG_MAX_ALIAS       24    /* def_alias/def_local の同時最大数（大域＋1ブロックの局所・コンパイル時のみ, v0.4.6） */
 #endif
+#ifndef CFG_MAX_IMPORTS
+#define CFG_MAX_IMPORTS     4     /* def_import の最大数（二重importの冪等判定用の名前表・コンパイル時のみ, v0.4.10）。
+                                   * 入れ子importは禁止なので「深さ」ではなく本数の上限。 */
+#endif
 
 /* VM 実行資源（§12） */
 #ifndef CFG_STACK_DEPTH
