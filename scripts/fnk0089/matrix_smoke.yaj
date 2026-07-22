@@ -1,0 +1,32 @@
+// ドットマトリックスへ2個の丸い目を表示します。
+// fnkmat.yajをYAJIRドライブへ置き、超音波センサーは外してください。
+
+def_import("fnkmat")
+
+INIT
+	0 -> _MATRIX_INIT
+	8 -> _MATRIX_BRIGHT
+
+	0, 0x00 -> _MATRIX_COL_
+	1, 0x3C -> _MATRIX_COL_
+	2, 0x42 -> _MATRIX_COL_
+	3, 0x5A -> _MATRIX_COL_
+	4, 0x5A -> _MATRIX_COL_
+	5, 0x42 -> _MATRIX_COL_
+	6, 0x3C -> _MATRIX_COL_
+	7, 0x00 -> _MATRIX_COL_
+
+	8, 0x00 -> _MATRIX_COL_
+	9, 0x3C -> _MATRIX_COL_
+	10, 0x42 -> _MATRIX_COL_
+	11, 0x5A -> _MATRIX_COL_
+	12, 0x5A -> _MATRIX_COL_
+	13, 0x42 -> _MATRIX_COL_
+	14, 0x3C -> _MATRIX_COL_
+	15, 0x00 -> _MATRIX_COL_
+	0 -> _MATRIX_SHOW
+	"[FNK0089] ドットマトリックスへ目を表示しました。" -> STDOUT
+END
+
+MAIN
+END

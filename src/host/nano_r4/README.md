@@ -114,6 +114,23 @@ Nano R4の8KBデータフラッシュのうち、先頭1KBを管理ヘッダ、�
 
 確認用の`scripts/nano_r4/autorun_blink.yaj`には末尾の`@save`まで含まれています。
 
+## スクリプトライブラリ
+
+v0.4.10の`def_import`に対応しています。Nano R4版ではデータフラッシュをautorun専用のまま
+保ち、ライブラリ本文をファームウェア内の`const char[]`としてFlashへ格納します。
+取り込み用のRAMバッファは使用しません。
+
+現在は`blinker`ライブラリを収録しています。
+
+```yajir
+def_import("blinker")
+```
+
+`blinker`は`GVAR[6]`と`GVAR[7]`を使用し、`BLINK_MS`、`BLINK_START`、
+`BLINK_STOP`を公開します。ライブラリを追加するときは`yajir_libs.h`へ本文と名前を登録して
+ファームウェアを再ビルドします。取り込み済み名前表は`CFG_MAX_IMPORTS=2`です。
+ライブラリ内のエラーには、ライブラリ名とその本文内の行番号が表示されます。
+
 ## 初期ポート
 
 | ポート | 形式 | 内容 |
@@ -191,6 +208,6 @@ END
 この識別子制限により、`CFG_EVENT_QUEUE_LEN`など15文字を超える一部の`CFG_*`公開定数は
 Nano R4プロファイルから直接参照できません。通常のポート名、別名、ハンドラ名には影響しません。
 
-ArduinoCore-renesas 1.6.0での現在のビルド実測はFlash 80,884 bytes、静的RAM 15,224 bytesです。
-32KB SRAMのうち17,544 bytesがスタックなどに残ります。8KBの無圧縮ソースバッファ版と比べ、
+ArduinoCore-renesas 1.6.0での現在のビルド実測はFlash 81,812 bytes、静的RAM 15,312 bytesです。
+32KB SRAMのうち17,456 bytesがスタックなどに残ります。8KBの無圧縮ソースバッファ版と比べ、
 圧縮とデータフラッシュautorunの状態を含めても静的RAMを3,920 bytes削減しています。

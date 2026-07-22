@@ -53,6 +53,7 @@ target_link_libraries(yajir_pico2_w
     pico_cyw43_arch_none
     hardware_adc
     hardware_clocks
+    hardware_i2c
     hardware_pwm
     hardware_sync
     hardware_flash

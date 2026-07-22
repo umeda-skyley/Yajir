@@ -222,7 +222,13 @@ static void banner(void)
 static void print_load_error(void)
 {
     const script_error_t *error = script_last_error();
-    yajir_puts("[loader] load error: line ");
+    yajir_puts("[loader] load error: ");
+    if (error->src_name[0]) {
+        yajir_puts("in library '");
+        yajir_puts(error->src_name);
+        yajir_puts("' ");
+    }
+    yajir_puts("line ");
     put_size(error->line > 0 ? (size_t)error->line : 0u);
     yajir_puts(": ");
     yajir_puts(script_strerror(error->code));

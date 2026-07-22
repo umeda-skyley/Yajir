@@ -1,4 +1,4 @@
-/* yajir_drive.c - flash-backed FAT12 MSC and fixed autorun reader */
+/* yajir_drive.c - flash-backed FAT12 MSC and 8.3 script reader */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -229,12 +229,9 @@ static uint16_t fat12_next(uint16_t cluster)
                           : (uint16_t)(value & 0x0FFFu);
 }
 
-int yajir_drive_load_autorun(char *buffer, size_t capacity,
-                             size_t *length_out)
+static int load_file_83(uint8_t const target[11], char *buffer,
+                        size_t capacity, size_t *length_out)
 {
-    static uint8_t const target[11] = {
-        'A','U','T','O','R','U','N',' ','Y','A','J'
-    };
     uint8_t entry[32];
     uint32_t index;
     uint32_t size = 0;
@@ -254,7 +251,7 @@ int yajir_drive_load_autorun(char *buffer, size_t capacity,
         if (entry[0] == 0x00) break;
         if (entry[0] == 0xE5 || entry[11] == 0x0F || (entry[11] & 0x18))
             continue;
-        if (memcmp(entry, target, sizeof(target)) == 0) {
+        if (memcmp(entry, target, 11u) == 0) {
             cluster = get16(entry, 26);
             size = get32(entry, 28);
             break;
@@ -283,6 +280,61 @@ int yajir_drive_load_autorun(char *buffer, size_t capacity,
     buffer[copied] = '\0';
     if (length_out) *length_out = copied;
     return YAJIR_AUTORUN_FOUND;
+}
+
+int yajir_drive_load_autorun(char *buffer, size_t capacity,
+                             size_t *length_out)
+{
+    static uint8_t const target[11] = {
+        'A','U','T','O','R','U','N',' ','Y','A','J'
+    };
+
+    return load_file_83(target, buffer, capacity, length_out);
+}
+
+static int library_target(const char *name, uint8_t target[11])
+{
+    size_t length = 0;
+
+    if (!name || !name[0]) return -1;
+    memset(target, ' ', 8);
+    while (*name) {
+        uint8_t c = (uint8_t)*name++;
+
+        if (length >= 8u) return -1;
+        if (!((c >= 'A' && c <= 'Z') ||
+              (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '-'))
+            return -1;
+        if (c >= 'a' && c <= 'z') c = (uint8_t)(c - 'a' + 'A');
+        target[length++] = c;
+    }
+    target[8] = 'Y';
+    target[9] = 'A';
+    target[10] = 'J';
+    return 0;
+}
+
+int yajir_drive_import(const char *name, const char **source,
+                       uint32_t *length)
+{
+    uint8_t target[11];
+    size_t source_length = 0;
+
+    if (!source || !length || library_target(name, target) != 0)
+        return -1;
+
+    /* Import解析中はMSC書込みキャッシュをソースバッファとして借りる。
+     * 先にflushしてキャッシュとの対応を外せば、load_file_83の読込み元はXIPだけになり、
+     * 同じ4 KiBを安全に上書きできる。コンパイラは復帰後に原文を保持しない。 */
+    if (cache_flush() != 0) return -1;
+    s_cache_block = DRIVE_CACHE_NONE;
+    if (load_file_83(target, (char *)s_cache, sizeof(s_cache),
+                     &source_length) != YAJIR_AUTORUN_FOUND)
+        return -1;
+    *source = (char const *)s_cache;
+    *length = (uint32_t)source_length;
+    return 0;
 }
 
 void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8],

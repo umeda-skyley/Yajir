@@ -1,0 +1,68 @@
+// pwm.yaj - Pico 2 W PWM convenience ports
+// 使用するグローバルスロット: なし
+
+def_port(PWM_PCT_,   T_INT)
+def_port(_PWM_PCT,   T_INT)
+def_port(_PWM_PCT_,  T_INT)
+def_port(_PWM_HZ_,   T_INT)
+def_port(_SERVO_,    T_INT)
+def_port(_TONE_,     T_INT)
+
+// pin -> PWM_PCT_ は、最後に設定したデューティを0..100で返します。
+PORT PWM_PCT_
+    def_local(LEVEL, VAR[0])
+
+    ARG[0] -> PWM_GET -> LEVEL
+    (LEVEL < 0) -> IFYES
+        -1 -> EXIT
+    END
+    LEVEL * 100 / PWM_MAX -> EXIT
+END
+
+// pin, percent -> _PWM_PCT は、デューティを0..100で設定します。
+PORT _PWM_PCT
+    def_local(PERCENT, VAR[0])
+    def_local(LEVEL,   VAR[1])
+
+    ARG[1], 0, 100 -> CLAMP -> PERCENT
+    PERCENT, 0, 100, 0, PWM_MAX -> MAP -> LEVEL
+    ARG[0], LEVEL -> PWM_SET
+    PERCENT -> EXIT
+END
+
+// 設定値をそのまま後段へ流すinout版です。
+PORT _PWM_PCT_
+    ARG[0], ARG[1] -> _PWM_PCT -> EXIT
+END
+
+// pin, hz -> _PWM_HZ_ は、実際に設定された周波数を返します。
+PORT _PWM_HZ_
+    ARG[0], ARG[1] -> PWM_FREQ
+    RESULT -> EXIT
+END
+
+// pin, angle -> _SERVO_ は、50Hzサーボを0..180度で駆動します。
+PORT _SERVO_
+    def_local(ANGLE, VAR[0])
+    def_local(LEVEL, VAR[1])
+
+    ARG[1], 0, 180 -> CLAMP -> ANGLE
+    ANGLE, 0, 180, 1638, 8192 -> MAP -> LEVEL
+    ARG[0], 50 -> PWM_FREQ
+    ARG[0], LEVEL -> PWM_SET
+    ANGLE -> EXIT
+END
+
+// pin, hz -> _TONE_ は50%デューティの矩形波を出します。0以下で停止します。
+PORT _TONE_
+    def_local(FREQUENCY, VAR[0])
+
+    ARG[1] -> FREQUENCY
+    (FREQUENCY <= 0) -> IFYES
+        ARG[0], 0 -> PWM_SET
+        0 -> EXIT
+    END
+    ARG[0], FREQUENCY -> PWM_FREQ
+    ARG[0], 32768 -> PWM_SET
+    FREQUENCY -> EXIT
+END

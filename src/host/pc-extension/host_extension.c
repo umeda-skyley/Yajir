@@ -85,6 +85,39 @@ static void host_write_utf8(const char *s)
     fputs(s, stdout);
 }
 
+/* ---- def_import: 標準PCホストと同じローカルファイル方式 ---- */
+static char g_libbuf[4096];
+static int pc_import(const char *name, const char **src, uint32_t *len)
+{
+    static const char *const dirs[] = { "", "scripts/lib/" };
+    char path[256];
+    size_t i, n;
+
+    for (i = 0; i < sizeof(dirs) / sizeof(dirs[0]); ++i) {
+        FILE *f;
+
+        snprintf(path, sizeof(path), "%s%s.yaj", dirs[i], name);
+        f = fopen(path, "rb");
+        if (!f) continue;
+        n = fread(g_libbuf, 1, sizeof(g_libbuf), f);
+        if (n >= sizeof(g_libbuf)) {
+            fclose(f);
+            fprintf(stderr,
+                    "[script] library '%s' is larger than the import buffer (%u bytes)\n",
+                    name, (unsigned)sizeof(g_libbuf));
+            return -1;
+        }
+        fclose(f);
+        g_libbuf[n] = '\0';
+        printf("[script] import '%s' <- %s (%u bytes)\n",
+               name, path, (unsigned)n);
+        *src = g_libbuf;
+        *len = (uint32_t)n;
+        return 0;
+    }
+    return -1;
+}
+
 /* ---- VAL_CALCULATOR（my_calc）---- */
 static int32_t my_calc(int a, int b) { return a * b; }  /* 仮実装 */
 static void th_calc(int argc, const script_value_t *a)
@@ -151,6 +184,7 @@ void host_register_all(void)
     script_register_now(get_tick);
     reg_in   ("VMSIZE", get_vmsize, SCRIPT_T_INT);
     script_register_stdout(host_write_utf8);
+    script_register_import(pc_import);
     reg_inout("VAL_CALCULATOR", NULL, th_calc, SCRIPT_T_INT);
     reg_out  ("DELAY", th_delay);   /* ブロッキング遅延＝産出none の out */
 

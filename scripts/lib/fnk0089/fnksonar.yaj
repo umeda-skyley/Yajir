@@ -1,0 +1,28 @@
+// fnksonar.yaj - FNK0089 HC-SR04互換超音波センサー
+// GPIO4=TRIG、GPIO5=ECHO。使用するグローバルスロット: なし
+
+def_port(_SONAR_INIT, T_INT)
+def_port(SONAR_US_, T_INT)
+def_port(SONAR_CM_, T_INT)
+
+PORT _SONAR_INIT
+	4, GPIO_OUT -> GPIO_MODE
+	4, 0 -> GPIO_SET
+	5, GPIO_IN -> GPIO_MODE
+	0 -> EXIT
+END
+
+// echoのHigh幅をマイクロ秒で返します。タイムアウトは約18msです。
+PORT SONAR_US_
+	4, 1, 10 -> GPIO_PULSE
+	5, 1, 18000 -> PULSE_IN -> EXIT
+END
+
+// 距離を整数cmで返します。0はタイムアウトです。
+PORT SONAR_CM_
+	SONAR_US_ -> VAR[0]
+	(VAR[0] == 0) -> IFYES
+		0 -> EXIT
+	END
+	VAR[0] * 17 / 1000 -> EXIT
+END

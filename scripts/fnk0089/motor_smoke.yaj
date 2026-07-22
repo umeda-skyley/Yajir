@@ -1,0 +1,57 @@
+// FNK0089の4輪を、一輪ずつ低速で確認します。
+// fnkmotor.yajをYAJIRドライブへ置き、車輪を床から浮かせて実行してください。
+
+def_import("fnkmotor")
+
+def_alias(TEST_SPEED, 25)
+def_alias(TEST_INDEX, GVAR[0])
+
+def_handler(MOTOR_STEP)
+def_handler(MOTOR_STOP)
+
+ON MOTOR_STEP
+	def_local(MOTOR_NO, VAR[0])
+	def_local(SPEED, VAR[1])
+
+	TEST_INDEX / 2 + 1 -> MOTOR_NO
+	(TEST_INDEX % 2 == 0) -> IFYES
+		TEST_SPEED -> SPEED
+	ELSE
+		0 - TEST_SPEED -> SPEED
+	END
+
+	"[FNK0089] M", MOTOR_NO, " speed=", SPEED -> STDOUT
+	(MOTOR_NO == 1) -> IFYES
+		SPEED -> _MOTOR1_
+	END
+	(MOTOR_NO == 2) -> IFYES
+		SPEED -> _MOTOR2_
+	END
+	(MOTOR_NO == 3) -> IFYES
+		SPEED -> _MOTOR3_
+	END
+	(MOTOR_NO == 4) -> IFYES
+		SPEED -> _MOTOR4_
+	END
+	0 -> MOTOR_STOP AFTER 500
+END
+
+ON MOTOR_STOP
+	0, 0 -> _DRIVE_
+	TEST_INDEX + 1 -> TEST_INDEX
+	(TEST_INDEX < 8) -> IFYES
+		0 -> MOTOR_STEP AFTER 500
+	ELSE
+		"[FNK0089] 全モーターを停止しました。" -> STDOUT
+	END
+END
+
+INIT
+	0 -> _MOTOR_INIT
+	0 -> TEST_INDEX
+	"[FNK0089] 3秒後にモーターテストを開始します。" -> STDOUT
+	0 -> MOTOR_STEP AFTER 3000
+END
+
+MAIN
+END

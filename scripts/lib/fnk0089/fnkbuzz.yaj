@@ -1,0 +1,30 @@
+// fnkbuzz.yaj - FNK0089 GPIO2パッシブブザー
+// 使用するグローバルスロット: なし
+
+def_port(_BUZZER_, T_INT)
+def_port(_BEEP_, T_INT)
+def_handler(FNK_BUZZ_STOP)
+def_handler(BUZZER_END)
+
+// hz -> _BUZZER_ で連続発音、0で停止します。
+PORT _BUZZER_
+	(ARG[0] <= 0) -> IFYES
+		2, 0 -> PWM_SET
+		0 -> EXIT
+	END
+	2, ARG[0] -> PWM_FREQ
+	2, 32768 -> PWM_SET
+	ARG[0] -> EXIT
+END
+
+// hz, ms -> _BEEP_ で発音し、時間後にBUZZER_ENDを通知します。
+PORT _BEEP_
+	ARG[0] -> _BUZZER_
+	0 -> FNK_BUZZ_STOP AFTER ARG[1]
+	ARG[0] -> EXIT
+END
+
+ON FNK_BUZZ_STOP
+	0 -> _BUZZER_
+	"BUZZER_END" -> INVOKER
+END

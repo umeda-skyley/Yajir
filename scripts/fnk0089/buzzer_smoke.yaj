@@ -1,0 +1,29 @@
+// FNK0089搭載ブザーを2kHzで3回鳴らします。
+// fnkbuzz.yajをYAJIRドライブへ置き、モーターを停止して実行してください。
+
+def_import("fnkbuzz")
+
+def_alias(BEEP_INDEX, GVAR[0])
+def_handler(BEEP_NEXT)
+
+ON BEEP_NEXT
+	2000, 120 -> _BEEP_
+END
+
+ON BUZZER_END
+	BEEP_INDEX + 1 -> BEEP_INDEX
+	(BEEP_INDEX < 3) -> IFYES
+		0 -> BEEP_NEXT AFTER 300
+	ELSE
+		"[FNK0089] ブザーテスト完了" -> STDOUT
+	END
+END
+
+INIT
+	0 -> BEEP_INDEX
+	"[FNK0089] 1秒後にブザーを鳴らします。" -> STDOUT
+	0 -> BEEP_NEXT AFTER 1000
+END
+
+MAIN
+END

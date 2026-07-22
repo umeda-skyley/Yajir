@@ -50,6 +50,36 @@ Pico 2 Wへ書き込みます。
 USBシリアルからのスクリプト投入待ちへ戻ります。Yajirは起動時だけ
 `autorun.yaj`を読むため、ドライブ上のファイルを変更した後は再起動が必要です。
 
+### スクリプトライブラリ
+
+v0.4.10の`def_import`では、YAJIRドライブのルートに置いた8.3形式のファイルを
+ライブラリとして取り込めます。
+
+```yajir
+def_import("utilport")
+```
+
+この宣言は`UTILPORT.YAJ`を読み込みます。指定する名前は拡張子を除く1～8文字で、
+英数字、`_`、`-`が使用でき、大文字と小文字は区別しません。サブディレクトリと
+ロングファイル名には対応していません。ライブラリは最大4095 bytesで、同時に保持せず
+一つずつコンパイルするため、複数のimportでも同じバッファを再利用します。
+
+読込バッファには既存の4 KiBフラッシュ書込みキャッシュを一時利用します。このため
+`def_import`対応によるPicoホストの追加RAM消費はありません。ライブラリ内のエラーには、
+指定したライブラリ名とそのファイル内の行番号が表示されます。
+
+同梱デモは`scripts/lib/blinker.yaj`を`BLINKER.YAJ`、`scripts/import_demo.yaj`を
+`AUTORUN.YAJ`としてYAJIRドライブへ置くと試せます。
+
+Pico向けの選択式ライブラリは`scripts/lib/pico2_w/`にあります。Windows上では必要な
+ファイルを`gpio.yaj`、`adc.yaj`、`pwm.yaj`という小文字名のままYAJIRドライブへ置けます。
+組込みポートを用途別のスクリプト内ポートへまとめているため、必要なものだけimportできます。
+`gpio.yaj`はGPIO26～28の立ち下がりIRQもピン別に再配送します。例えば
+`1 -> _GPIO26_IRQ`で有効化すると、アプリは引数判定なしの`ON GPIO26_IRQ`で受信できます。
+
+FNK0089車体向けには`scripts/lib/fnk0089/`に、モーター、ブザー、ラインセンサー、
+超音波センサー、16x8ドットマトリックス、5x7英字フォントの選択式ライブラリがあります。
+
 ## USBシリアルからの投入
 
 `autorun.yaj`がない場合は、USBシリアル端末に次のプロンプトを表示します。
@@ -167,8 +197,13 @@ END
 | `GPIO_SET` | `pin, value -> GPIO_SET` | 設定した`0`または`1` | GPIOへ出力 |
 | `GPIO_MODE` | `pin, mode -> GPIO_MODE` | 成功時`0` | 入出力モードとpullを設定 |
 | `GPIO_TOGGLE` | `pin -> GPIO_TOGGLE` | 反転後の`0`または`1` | GPIOの出力ラッチを反転 |
+| `GPIO_PULSE` | `pin, level, width_us -> GPIO_PULSE` | 指定した`width_us` | 反対レベルから指定レベルのパルスを出力 |
+| `PULSE_IN` | `pin, level, timeout_us -> PULSE_IN` | パルス幅、timeout時`0` | 指定レベルのパルス幅をマイクロ秒で計測 |
 
 `GPIO_SET`では`0`をLow、非0をHighとして扱います。返される値は正規化された`0`または`1`です。
+`GPIO_PULSE`と`PULSE_IN`の時間指定は`1..10000000` usです。どちらも同期処理のため、
+実行中は指定時間または入力パルス終了までホスト処理をブロックします。`PULSE_IN`は
+計測開始前から同じレベルだった場合、いったんそのパルスが終わってから次のパルスを待ちます。
 
 ### GPIOモード定数
 
@@ -300,6 +335,30 @@ MAIN
 END
 ```
 
+## I2C
+
+I2C0をマスターとして使用します。`I2C0_OPEN`で初期化してから読み書きしてください。
+
+| ポート | 形式 | 産出値／`RESULT` | 内容 |
+|---|---|---:|---|
+| `I2C0_OPEN` | `sda, scl, hz -> I2C0_OPEN` | 実設定周波数 | I2C0を初期化 |
+| `I2C0_WRITE` | `addr, byte... -> I2C0_WRITE` | 送信byte数、失敗時は負値 | 1～7 byteを一回の転送で送信 |
+| `I2C0_WRITE8` | `addr, reg, value -> I2C0_WRITE8` | 成功時`2`、失敗時は負値 | 8 bitレジスタへ1 byte書込み |
+| `I2C0_READ8` | `addr, reg -> I2C0_READ8` | 読出値`0..255`、失敗時`-1` | repeated-startで8 bitレジスタを読出し |
+
+I2C0の有効なピン組は、外部へ公開されたGPIOのうちSDAが`0 mod 4`、SCLがその次の
+GPIOとなる組です。代表例はGPIO4/5です。周波数は`1000..1000000` Hz、7 bitアドレスは
+`0x08..0x77`を受け付けます。一回のI2C処理は20 msでタイムアウトします。
+
+```yajir
+INIT
+    4, 5, 100000 -> I2C0_OPEN
+    0x71, 0x21 -> I2C0_WRITE
+END
+```
+
+`Ctrl+C`でスクリプトを停止するとI2C0をdeinitし、SDA/SCLをpullなしのGPIO入力へ戻します。
+
 ## サンプルスクリプト
 
 | ファイル | 内容 |
@@ -313,15 +372,21 @@ END
 | `scripts/pico2_w/usb_morse.yaj` | USB入力をオンボードLEDでモールス送信 |
 | `scripts/pico2_w/usb_morse_selfdrive.yaj` | `AFTER`で自己駆動するイベントチェイン型のモールス送信 |
 | `scripts/pico2_w/sleep_wakeup.yaj` | タイマーまたはUSB/GPIO IRQで復帰するSleep |
+| `scripts/pico2_w/lib_demo.yaj` | GPIO、ADC、PWMライブラリの選択import |
+| `scripts/pico2_w/lib_gpio_irq.yaj` | GPIOライブラリによるGPIO26のピン別falling IRQ |
+| `scripts/fnk0089/*.yaj` | FNK0089のモーター、ブザー、ライン、超音波、マトリックス確認 |
 
 ## 現在のメモリ構成
 
 現在のPico 2 W設定では、Yajir core、コンパイラ静的領域、14 KiBのスクリプト受信バッファ、
-PicoホストのYajir用静的状態を合計して`129,822 bytes`（約`126.78 KiB`）です。
+PicoホストのYajir用静的状態を合計して`130,166 bytes`（約`127.12 KiB`）です。
 v0.4.7の遅延postは`CFG_DELAY_SLOTS=2`とし、同時に2本まで待機できます。
+v0.4.10の取り込み済み名前表は`CFG_MAX_IMPORTS=8`です。
 
 この値にはPico SDK、CYW43、ヒープ、Cスタックを含みません。
 
 ## 関連資料
 
 - [Pico 2 Wサンプルスクリプト](../../../scripts/pico2_w)
+- [FNK0089ライブラリ](../../../scripts/lib/fnk0089)
+- [FNK0089実機サンプル](../../../scripts/fnk0089)

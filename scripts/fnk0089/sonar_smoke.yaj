@@ -1,0 +1,13 @@
+// 超音波センサーの距離を250msごとに表示します。
+// fnksonar.yajをYAJIRドライブへ置き、ドットマトリックスは外してください。
+
+def_import("fnksonar")
+
+INIT
+	0 -> _SONAR_INIT
+END
+
+MAIN
+	"distance: ", SONAR_CM_, " cm" -> STDOUT
+	250 -> WAIT
+END

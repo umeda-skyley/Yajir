@@ -15,6 +15,7 @@
 #define CFG_MAX_BLOCKS          48
 #define CFG_MAX_RESOURCES       64
 #define CFG_MAX_ALIAS          128
+#define CFG_MAX_IMPORTS          8
 #define CFG_STACK_DEPTH         64
 #define CFG_NEST_LIMIT           8
 #define CFG_LOOP_NEST            8

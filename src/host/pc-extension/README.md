@@ -86,8 +86,22 @@ GPT_HISTORY -> STDOUT       // 現在のおおよその履歴バイト数
 | `-2` | ファイルを開けない |
 | `-3` | 読み書きまたはメモリ確保に失敗 |
 
+## スクリプトライブラリ
+
+v0.4.10の`def_import`に対応しています。標準PCホストと同じく、カレントディレクトリ、
+続いて`./scripts/lib/`から`<名前>.yaj`を探索します。
+
+```yajir
+def_import("blinker")
+```
+
+上の例では`blinker.yaj`または`scripts/lib/blinker.yaj`を読み込みます。ライブラリ本文は
+最大4095 bytesです。ライブラリ内のコンパイルエラーには、ライブラリ名とそのファイル内の
+行番号が表示されます。
+
 ## サンプル
 
+- `scripts/import_demo.yaj`: `def_import("blinker")`によるライブラリ取込み
 - `scripts/pc-extension/net_ai_demo.yaj`: HTTPと3社AIの同期・非同期呼び出し
 - `scripts/pc-extension/file_demo.yaj`: 上書き、追記、読込、チェイン
 - `scripts/pc-extension/utf8_stdout.yaj`: Windowsコンソールへの日本語出力

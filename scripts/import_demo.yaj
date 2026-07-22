@@ -2,7 +2,7 @@
 //
 // PCで試す: build\script.exe run scripts\import_demo.yaj 5
 //   ライブラリは scripts/lib/blinker.yaj から読まれる（PCホスト＝ファイル方式）。
-//   実機では同じ名前が Flash 常駐の表（stm32_l476/yajir_libs.h）から引かれる。
+//   Pico 2 WではYAJIRドライブ、Nano R4/STM32ではFlash常駐表から同じ名前が引かれる。
 //   スクリプトは「所在」を知らない ── そこがホスト注入にしてある理由。
 
 def_import("blinker")             // ★最上部。他の宣言/ブロックより前にだけ書ける

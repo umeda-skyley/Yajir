@@ -1,0 +1,13 @@
+// 3個のライントラッキングセンサーを200msごとに表示します。
+// fnkline.yajをYAJIRドライブへ置いてください。
+
+def_import("fnkline")
+
+INIT
+	0 -> _LINE_INIT
+END
+
+MAIN
+	"line L/C/R/bits: ", LINE_L_, "/", LINE_C_, "/", LINE_R_, "/", LINE_BITS_ -> STDOUT
+	200 -> WAIT
+END

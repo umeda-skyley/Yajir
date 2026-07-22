@@ -2,6 +2,7 @@
 #define YAJIR_DRIVE_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 enum {
     YAJIR_AUTORUN_ERROR = -1,
@@ -13,5 +14,7 @@ enum {
 int yajir_drive_init(void);
 int yajir_drive_load_autorun(char *buffer, size_t capacity,
                              size_t *length_out);
+int yajir_drive_import(const char *name, const char **source,
+                       uint32_t *length);
 
 #endif /* YAJIR_DRIVE_H */

@@ -2,6 +2,7 @@
 #include "yajir_build_config.h"
 #include <Arduino.h>
 #include <FspTimer.h>
+#include <string.h>
 
 extern FspTimer *__get_timer_for_channel(int channel);
 
@@ -12,6 +13,7 @@ extern "C" {
 }
 
 #include "yajir_glue.h"
+#include "yajir_libs.h"
 
 enum {
     YAJIR_GPIO_IN = 0,
@@ -101,6 +103,19 @@ static void reg_const(const char *name, int32_t value)
 {
     script_register_const(name, value);
     host_diag_note(name);
+}
+
+static int yajir_import(const char *name, const char **source,
+                        uint32_t *length)
+{
+    for (int i = 0; i < YAJIR_NLIBS; ++i) {
+        if (strcmp(name, YAJIR_LIBS[i].name) == 0) {
+            *source = YAJIR_LIBS[i].source;
+            *length = (uint32_t)strlen(YAJIR_LIBS[i].source);
+            return 0;
+        }
+    }
+    return -1;
 }
 
 static int32_t led1_get(void)
@@ -446,6 +461,7 @@ extern "C" void host_register_all(void)
     reg_out("GPIO_IRQ_ENABLE", th_gpio_irq_enable);
     reg_out("GPIO_IRQ_DISABLE", th_gpio_irq_disable);
     script_register_stdout(yajir_puts);
+    script_register_import(yajir_import);
     reg_handler("USB_SERIAL");
     reg_handler("GPIO_IRQ");
 

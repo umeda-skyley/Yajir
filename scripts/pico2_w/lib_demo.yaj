@@ -1,0 +1,34 @@
+// gpio.yaj、adc.yaj、pwm.yajを選択的に取り込むデモです。
+// 3ファイルをYAJIRドライブのルートへ置いてから実行してください。
+
+def_import("gpio")
+def_import("adc")
+def_import("pwm")
+
+def_alias(PWM_PIN, 15)
+def_alias(LEVEL, GVAR[0])
+def_alias(STEP, GVAR[1])
+
+INIT
+    "GPIO26=", GPIO26_ -> STDOUT
+    "ADC0 raw=", ADC0_ -> STDOUT
+    26 -> ADC_MV_
+    "ADC0 mV=", RESULT -> STDOUT
+    "TEMP Cx100=", TEMP_C_ -> STDOUT
+    PWM_PIN, 1000 -> _PWM_HZ_
+    0 -> LEVEL
+    10 -> STEP
+END
+
+MAIN
+    PWM_PIN, LEVEL -> _PWM_PCT
+    LEVEL + STEP -> LEVEL
+
+    (LEVEL >= 100) -> IFYES
+        0 - STEP -> STEP
+    END
+    (LEVEL <= 0) -> IFYES
+        10 -> STEP
+    END
+    50 -> WAIT
+END

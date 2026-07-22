@@ -1,0 +1,18 @@
+// gpio.yajのピン別IRQハンドラを使うサンプルです。
+// gpio.yajをYAJIRドライブのルートへ置き、GPIO26を一瞬GNDへ接続してください。
+
+def_import("gpio")
+
+INIT
+    1 -> _GPIO26_IRQ
+    "GPIO26 IRQ ready" -> STDOUT
+END
+
+MAIN
+    1000 -> WAIT
+END
+
+ON GPIO26_IRQ
+    NOT LED1 -> LED1
+    "GPIO26 falling" -> STDOUT
+END

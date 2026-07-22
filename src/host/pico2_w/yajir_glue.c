@@ -4,6 +4,7 @@
 #include "hardware/adc.h"
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
+#include "hardware/i2c.h"
 #include "hardware/pwm.h"
 #include "hardware/timer.h"
 #include "pico/low_power.h"
@@ -13,6 +14,7 @@
 #include "host_diag.h"
 #include "script.h"
 #include "vm.h"
+#include "yajir_drive.h"
 #include "yajir_glue.h"
 #include "yajir_usb.h"
 
@@ -21,6 +23,8 @@ static int32_t s_led1;
 
 #define YAJIR_PWM_DEFAULT_HZ 1000
 #define YAJIR_PWM_LEVEL_MAX 65535
+#define YAJIR_I2C_TIMEOUT_US 20000
+#define YAJIR_PULSE_MAX_US 10000000
 
 typedef struct {
     uint16_t level[2];
@@ -31,6 +35,14 @@ typedef struct {
 
 static yajir_pwm_slice_t s_pwm[NUM_PWM_SLICES];
 static uint32_t s_pwm_pins;
+
+typedef struct {
+    int8_t sda_pin;
+    int8_t scl_pin;
+    bool initialized;
+} yajir_i2c_t;
+
+static yajir_i2c_t s_i2c0;
 
 enum {
     YAJIR_GPIO_IN = 0,
@@ -216,6 +228,195 @@ static void th_gpio_toggle(int argc, const script_value_t *argv)
     value = gpio_get_out_level((uint)pin) ? 0 : 1;
     gpio_put((uint)pin, value != 0);
     script_set_result(value);
+}
+
+static void th_gpio_pulse(int argc, const script_value_t *argv)
+{
+    int32_t pin = argc > 0 ? argv[0].i : -1;
+    int32_t level = argc > 1 ? argv[1].i : -1;
+    int32_t width_us = argc > 2 ? argv[2].i : -1;
+
+    if (argc < 3 || !gpio_is_exposed(pin) ||
+        (level != 0 && level != 1) ||
+        width_us < 1 || width_us > YAJIR_PULSE_MAX_US) {
+        script_set_result(-1);
+        return;
+    }
+
+    gpio_set_function((uint)pin, GPIO_FUNC_SIO);
+    gpio_set_dir((uint)pin, GPIO_OUT);
+    gpio_put((uint)pin, level == 0);
+    busy_wait_us_32(2);
+    gpio_put((uint)pin, level != 0);
+    busy_wait_us_32((uint32_t)width_us);
+    gpio_put((uint)pin, level == 0);
+    script_set_result(width_us);
+}
+
+static void th_pulse_in(int argc, const script_value_t *argv)
+{
+    int32_t pin = argc > 0 ? argv[0].i : -1;
+    int32_t level = argc > 1 ? argv[1].i : -1;
+    int32_t timeout_us = argc > 2 ? argv[2].i : -1;
+    uint64_t deadline;
+    uint64_t started;
+
+    if (argc < 3 || !gpio_is_exposed(pin) ||
+        (level != 0 && level != 1) ||
+        timeout_us < 1 || timeout_us > YAJIR_PULSE_MAX_US) {
+        script_set_result(-1);
+        return;
+    }
+
+    gpio_set_function((uint)pin, GPIO_FUNC_SIO);
+    gpio_set_dir((uint)pin, GPIO_IN);
+    deadline = time_us_64() + (uint32_t)timeout_us;
+
+    while ((gpio_get((uint)pin) ? 1 : 0) == level) {
+        if (time_us_64() >= deadline) {
+            script_set_result(0);
+            return;
+        }
+        tight_loop_contents();
+    }
+    while ((gpio_get((uint)pin) ? 1 : 0) != level) {
+        if (time_us_64() >= deadline) {
+            script_set_result(0);
+            return;
+        }
+        tight_loop_contents();
+    }
+
+    started = time_us_64();
+    while ((gpio_get((uint)pin) ? 1 : 0) == level) {
+        if (time_us_64() >= deadline) {
+            script_set_result(0);
+            return;
+        }
+        tight_loop_contents();
+    }
+    script_set_result((int32_t)(time_us_64() - started));
+}
+
+static bool i2c0_pins_are_valid(int32_t sda_pin, int32_t scl_pin)
+{
+    return gpio_is_exposed(sda_pin) && gpio_is_exposed(scl_pin) &&
+           (sda_pin & 3) == 0 && scl_pin == sda_pin + 1;
+}
+
+static void i2c0_reset(void)
+{
+    if (!s_i2c0.initialized) return;
+
+    i2c_deinit(i2c0);
+    gpio_set_function((uint)s_i2c0.sda_pin, GPIO_FUNC_SIO);
+    gpio_set_function((uint)s_i2c0.scl_pin, GPIO_FUNC_SIO);
+    gpio_disable_pulls((uint)s_i2c0.sda_pin);
+    gpio_disable_pulls((uint)s_i2c0.scl_pin);
+    gpio_set_dir((uint)s_i2c0.sda_pin, GPIO_IN);
+    gpio_set_dir((uint)s_i2c0.scl_pin, GPIO_IN);
+    s_i2c0.sda_pin = -1;
+    s_i2c0.scl_pin = -1;
+    s_i2c0.initialized = false;
+}
+
+static void th_i2c0_open(int argc, const script_value_t *argv)
+{
+    int32_t sda_pin = argc > 0 ? argv[0].i : -1;
+    int32_t scl_pin = argc > 1 ? argv[1].i : -1;
+    int32_t frequency = argc > 2 ? argv[2].i : -1;
+    uint actual;
+
+    if (argc < 3 || !i2c0_pins_are_valid(sda_pin, scl_pin) ||
+        frequency < 1000 || frequency > 1000000) {
+        script_set_result(-1);
+        return;
+    }
+
+    i2c0_reset();
+    actual = i2c_init(i2c0, (uint)frequency);
+    gpio_set_function((uint)sda_pin, GPIO_FUNC_I2C);
+    gpio_set_function((uint)scl_pin, GPIO_FUNC_I2C);
+    gpio_pull_up((uint)sda_pin);
+    gpio_pull_up((uint)scl_pin);
+    s_i2c0.sda_pin = (int8_t)sda_pin;
+    s_i2c0.scl_pin = (int8_t)scl_pin;
+    s_i2c0.initialized = true;
+    script_set_result((int32_t)actual);
+}
+
+static bool i2c_address_is_valid(int32_t address)
+{
+    return address >= 0x08 && address <= 0x77;
+}
+
+static void th_i2c0_write(int argc, const script_value_t *argv)
+{
+    uint8_t data[CFG_ARG_COUNT - 1];
+    int32_t address = argc > 0 ? argv[0].i : -1;
+    int count;
+    int i;
+
+    if (!s_i2c0.initialized || argc < 2 ||
+        !i2c_address_is_valid(address)) {
+        script_set_result(-1);
+        return;
+    }
+    count = argc - 1;
+    for (i = 0; i < count; ++i) {
+        if (argv[i + 1].i < 0 || argv[i + 1].i > 255) {
+            script_set_result(-1);
+            return;
+        }
+        data[i] = (uint8_t)argv[i + 1].i;
+    }
+    script_set_result(i2c_write_timeout_us(i2c0, (uint8_t)address,
+                                           data, (size_t)count, false,
+                                           YAJIR_I2C_TIMEOUT_US));
+}
+
+static void th_i2c0_write8(int argc, const script_value_t *argv)
+{
+    uint8_t data[2];
+    int32_t address = argc > 0 ? argv[0].i : -1;
+
+    if (!s_i2c0.initialized || argc < 3 ||
+        !i2c_address_is_valid(address) ||
+        argv[1].i < 0 || argv[1].i > 255 ||
+        argv[2].i < 0 || argv[2].i > 255) {
+        script_set_result(-1);
+        return;
+    }
+    data[0] = (uint8_t)argv[1].i;
+    data[1] = (uint8_t)argv[2].i;
+    script_set_result(i2c_write_timeout_us(i2c0, (uint8_t)address,
+                                           data, 2, false,
+                                           YAJIR_I2C_TIMEOUT_US));
+}
+
+static void th_i2c0_read8(int argc, const script_value_t *argv)
+{
+    uint8_t reg;
+    uint8_t value;
+    int32_t address = argc > 0 ? argv[0].i : -1;
+    int result;
+
+    if (!s_i2c0.initialized || argc < 2 ||
+        !i2c_address_is_valid(address) ||
+        argv[1].i < 0 || argv[1].i > 255) {
+        script_set_result(-1);
+        return;
+    }
+    reg = (uint8_t)argv[1].i;
+    result = i2c_write_timeout_us(i2c0, (uint8_t)address, &reg, 1, true,
+                                  YAJIR_I2C_TIMEOUT_US);
+    if (result != 1) {
+        script_set_result(-1);
+        return;
+    }
+    result = i2c_read_timeout_us(i2c0, (uint8_t)address, &value, 1, false,
+                                 YAJIR_I2C_TIMEOUT_US);
+    script_set_result(result == 1 ? (int32_t)value : -1);
 }
 
 static uint32_t gpio_irq_to_sdk(int32_t mask)
@@ -489,6 +690,8 @@ void host_register_all(void)
     reg_inout("GPIO_SET", NULL, th_gpio_set, SCRIPT_T_INT);
     reg_out("GPIO_MODE", th_gpio_mode);
     reg_inout("GPIO_TOGGLE", NULL, th_gpio_toggle, SCRIPT_T_INT);
+    reg_inout("GPIO_PULSE", NULL, th_gpio_pulse, SCRIPT_T_INT);
+    reg_inout("PULSE_IN", NULL, th_pulse_in, SCRIPT_T_INT);
     reg_out("GPIO_IRQ_ENABLE", th_gpio_irq_enable);
     reg_out("GPIO_IRQ_DISABLE", th_gpio_irq_disable);
     reg_inout("ADC_GET", NULL, th_adc_get, SCRIPT_T_INT);
@@ -497,7 +700,12 @@ void host_register_all(void)
     reg_inout("PWM_SET", NULL, th_pwm_set, SCRIPT_T_INT);
     reg_inout("PWM_GET", NULL, th_pwm_get, SCRIPT_T_INT);
     reg_out("PWM_FREQ", th_pwm_freq);
+    reg_inout("I2C0_OPEN", NULL, th_i2c0_open, SCRIPT_T_INT);
+    reg_inout("I2C0_WRITE", NULL, th_i2c0_write, SCRIPT_T_INT);
+    reg_inout("I2C0_WRITE8", NULL, th_i2c0_write8, SCRIPT_T_INT);
+    reg_inout("I2C0_READ8", NULL, th_i2c0_read8, SCRIPT_T_INT);
     script_register_stdout(yajir_puts);
+    script_register_import(yajir_drive_import);
     reg_out("DELAY", th_delay);
     reg_out("SLEEP", th_sleep);
     reg_handler("USB_SERIAL");
@@ -520,6 +728,9 @@ void yajir_glue_init(bool cyw43_ready)
 {
     s_cyw43_ready = cyw43_ready;
     s_led1 = 0;
+    s_i2c0.sda_pin = -1;
+    s_i2c0.scl_pin = -1;
+    s_i2c0.initialized = false;
     pwm_reset();
     adc_init();
     adc_set_temp_sensor_enabled(true);
@@ -544,5 +755,6 @@ void yajir_glue_stop(void)
         gpio_set_dir(pin, GPIO_OUT);
         gpio_put(pin, false);
     }
+    i2c0_reset();
     pwm_reset();
 }

@@ -1,0 +1,113 @@
+// gpio.yaj - Pico 2 W GPIO26..28 direction-aware ports
+// 使用するグローバルスロット: なし
+//
+// GPIO26_  -> value        入力
+// value -> _GPIO26         出力
+// value -> _GPIO26_ -> ... 入出力チェイン
+// 1 -> _GPIO26_IRQ         pull-up入力＋立ち下がりIRQを有効化
+// 0 -> _GPIO26_IRQ         IRQを無効化
+// ON GPIO26_IRQ            GPIO26の立ち下がりを引数なしで受信
+
+def_port(GPIO26_,  T_INT)
+def_port(_GPIO26,  T_INT)
+def_port(_GPIO26_, T_INT)
+def_port(GPIO27_,  T_INT)
+def_port(_GPIO27,  T_INT)
+def_port(_GPIO27_, T_INT)
+def_port(GPIO28_,  T_INT)
+def_port(_GPIO28,  T_INT)
+def_port(_GPIO28_, T_INT)
+def_port(_GPIO26_IRQ, T_INT)
+def_port(_GPIO27_IRQ, T_INT)
+def_port(_GPIO28_IRQ, T_INT)
+
+def_handler(GPIO26_IRQ)
+def_handler(GPIO27_IRQ)
+def_handler(GPIO28_IRQ)
+
+PORT GPIO26_
+    26, GPIO_IN -> GPIO_MODE
+    26 -> GPIO_GET -> EXIT
+END
+
+PORT _GPIO26
+    26, GPIO_OUT -> GPIO_MODE
+    26, ARG[0] -> GPIO_SET -> EXIT
+END
+
+PORT _GPIO26_
+    ARG[0] -> _GPIO26
+    26 -> GPIO_GET -> EXIT
+END
+
+PORT GPIO27_
+    27, GPIO_IN -> GPIO_MODE
+    27 -> GPIO_GET -> EXIT
+END
+
+PORT _GPIO27
+    27, GPIO_OUT -> GPIO_MODE
+    27, ARG[0] -> GPIO_SET -> EXIT
+END
+
+PORT _GPIO27_
+    ARG[0] -> _GPIO27
+    27 -> GPIO_GET -> EXIT
+END
+
+PORT GPIO28_
+    28, GPIO_IN -> GPIO_MODE
+    28 -> GPIO_GET -> EXIT
+END
+
+PORT _GPIO28
+    28, GPIO_OUT -> GPIO_MODE
+    28, ARG[0] -> GPIO_SET -> EXIT
+END
+
+PORT _GPIO28_
+    ARG[0] -> _GPIO28
+    28 -> GPIO_GET -> EXIT
+END
+
+PORT _GPIO26_IRQ
+    (ARG[0] == 0) -> IFYES
+        26 -> GPIO_IRQ_DISABLE
+        0 -> EXIT
+    END
+    26, GPIO_IN_PULLUP -> GPIO_MODE
+    26, GPIO_IRQ_FALL -> GPIO_IRQ_ENABLE
+    0 -> EXIT
+END
+
+PORT _GPIO27_IRQ
+    (ARG[0] == 0) -> IFYES
+        27 -> GPIO_IRQ_DISABLE
+        0 -> EXIT
+    END
+    27, GPIO_IN_PULLUP -> GPIO_MODE
+    27, GPIO_IRQ_FALL -> GPIO_IRQ_ENABLE
+    0 -> EXIT
+END
+
+PORT _GPIO28_IRQ
+    (ARG[0] == 0) -> IFYES
+        28 -> GPIO_IRQ_DISABLE
+        0 -> EXIT
+    END
+    28, GPIO_IN_PULLUP -> GPIO_MODE
+    28, GPIO_IRQ_FALL -> GPIO_IRQ_ENABLE
+    0 -> EXIT
+END
+
+ON GPIO_IRQ
+    ((ARG[0] == 26) & (ARG[1] == GPIO_IRQ_FALL)) -> IFYES
+        "GPIO26_IRQ" -> INVOKER
+    END
+    ((ARG[0] == 27) & (ARG[1] == GPIO_IRQ_FALL)) -> IFYES
+        "GPIO27_IRQ" -> INVOKER
+    END
+    ((ARG[0] == 28) & (ARG[1] == GPIO_IRQ_FALL)) -> IFYES
+        "GPIO28_IRQ" -> INVOKER
+    END
+END

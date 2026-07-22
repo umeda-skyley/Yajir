@@ -1,0 +1,89 @@
+// fnkmat.yaj - FNK0089 16x8ドットマトリックス(VK16K33/HT16K33)
+// 表示バッファとしてGVAR[24]..GVAR[31]を使用します。
+
+def_alias(FNK_MAT_ADDR, 0x71)
+
+def_port(_MATRIX_INIT, T_INT)
+def_port(_MATRIX_COL_, T_INT)
+def_port(_MATRIX_PIXEL_, T_INT)
+def_port(_MATRIX_CLEAR, T_INT)
+def_port(_MATRIX_SHOW, T_INT)
+def_port(_MATRIX_BRIGHT, T_INT)
+
+// GPIO4=SDA、GPIO5=SCL、100kHzで初期化します。
+PORT _MATRIX_INIT
+	4, 5, 100000 -> I2C0_OPEN
+	FNK_MAT_ADDR, 0x21 -> I2C0_WRITE
+	FNK_MAT_ADDR, 0x81 -> I2C0_WRITE
+	15 -> _MATRIX_BRIGHT
+	0 -> _MATRIX_CLEAR
+	0 -> EXIT
+END
+
+// x(0..15), pattern(下位8bit)で物理表示の縦1列を描きます。
+// HT16K33の各wordは、同じ横位置にある左パネルを下位byte、右パネルを
+// 上位byteとして保持します。左右パネルは交換せず、各パネル内を同じ向きで扱います。
+PORT _MATRIX_COL_
+	def_local(X, VAR[0])
+	def_local(WORD, VAR[1])
+	def_local(BUFFER_INDEX, VAR[2])
+
+	ARG[0], 0, 15 -> CLAMP -> X
+	// 動的GVARアクセスは1始まりなので、GVAR[24..31]は25..32で指定します。
+	25 + (X % 8) -> BUFFER_INDEX
+	BUFFER_INDEX -> GVAR -> WORD
+	(X < 8) -> IFYES
+		(WORD & 0xFF00) | (ARG[1] & 255) -> WORD
+	ELSE
+		(WORD & 0x00FF) | ((ARG[1] & 255) << 8) -> WORD
+	END
+	BUFFER_INDEX, WORD -> GVAR
+	ARG[1] & 255 -> EXIT
+END
+
+// x(0..15), y(0..7), valueで1 pixelをバッファへ描きます。
+PORT _MATRIX_PIXEL_
+	def_local(X, VAR[0])
+	def_local(Y, VAR[1])
+	def_local(WORD, VAR[2])
+	def_local(BUFFER_INDEX, VAR[3])
+	def_local(BIT_INDEX, VAR[4])
+
+	ARG[0], 0, 15 -> CLAMP -> X
+	ARG[1], 0, 7 -> CLAMP -> Y
+	25 + (X % 8) -> BUFFER_INDEX
+	Y + (X / 8) * 8 -> BIT_INDEX
+	BUFFER_INDEX -> GVAR -> WORD
+	(ARG[2] == 0) -> IFYES
+		WORD & ~(1 << BIT_INDEX) -> WORD
+	ELSE
+		WORD | (1 << BIT_INDEX) -> WORD
+	END
+	BUFFER_INDEX, WORD -> GVAR
+	ARG[2] != 0 -> EXIT
+END
+
+PORT _MATRIX_CLEAR
+	8 -> REPEAT
+		24 + ITR, 0 -> GVAR
+	END
+	0 -> _MATRIX_SHOW
+	0 -> EXIT
+END
+
+// バッファ8語をHT16K33の表示RAMへ転送します。
+PORT _MATRIX_SHOW
+	def_local(WORD, VAR[0])
+
+	8 -> REPEAT
+		24 + ITR -> GVAR -> WORD
+		FNK_MAT_ADDR, (ITR - 1) * 2, WORD & 255, (WORD >> 8) & 255 -> I2C0_WRITE
+	END
+	0 -> EXIT
+END
+
+PORT _MATRIX_BRIGHT
+	ARG[0], 0, 15 -> CLAMP -> VAR[0]
+	FNK_MAT_ADDR, 0xE0 | VAR[0] -> I2C0_WRITE
+	VAR[0] -> EXIT
+END

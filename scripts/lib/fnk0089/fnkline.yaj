@@ -1,0 +1,37 @@
+// fnkline.yaj - FNK0089 3chライントラッキングセンサー
+// 使用するグローバルスロット: なし
+
+def_port(_LINE_INIT, T_INT)
+def_port(LINE_L_, T_INT)
+def_port(LINE_C_, T_INT)
+def_port(LINE_R_, T_INT)
+def_port(LINE_BITS_, T_INT)
+
+PORT _LINE_INIT
+	12, GPIO_IN -> GPIO_MODE
+	11, GPIO_IN -> GPIO_MODE
+	10, GPIO_IN -> GPIO_MODE
+	0 -> EXIT
+END
+
+PORT LINE_L_
+	12 -> GPIO_GET -> EXIT
+END
+
+PORT LINE_C_
+	11 -> GPIO_GET -> EXIT
+END
+
+PORT LINE_R_
+	10 -> GPIO_GET -> EXIT
+END
+
+// bit2=左、bit1=中央、bit0=右の生入力です。
+PORT LINE_BITS_
+	12 -> GPIO_GET
+	RESULT * 4 -> VAR[0]
+	11 -> GPIO_GET
+	VAR[0] + RESULT * 2 -> VAR[0]
+	10 -> GPIO_GET
+	VAR[0] + RESULT -> EXIT
+END

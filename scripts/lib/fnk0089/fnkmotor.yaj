@@ -1,0 +1,80 @@
+// fnkmotor.yaj - FNK0089 4輪モーター
+// 使用するグローバルスロット: なし
+
+def_alias(FNK_MOTOR_HZ, 500)
+
+def_port(_MOTOR_INIT, T_INT)
+def_port(_MOTOR1_, T_INT)
+def_port(_MOTOR2_, T_INT)
+def_port(_MOTOR3_, T_INT)
+def_port(_MOTOR4_, T_INT)
+def_port(_LEFT_, T_INT)
+def_port(_RIGHT_, T_INT)
+def_port(_DRIVE_, T_INT)
+
+// pinA, pinB, speed(-100..100)を一輪分のHブリッジ出力へ変換します。
+def_port(FNK_WHEEL, T_INT)
+
+PORT FNK_WHEEL
+	def_local(SPEED, VAR[0])
+	def_local(LEVEL, VAR[1])
+
+	ARG[2], -100, 100 -> CLAMP -> SPEED
+	SPEED -> ABS
+	RESULT * PWM_MAX / 100 -> LEVEL
+
+	(SPEED >= 0) -> IFYES
+		ARG[1], 0 -> PWM_SET
+		ARG[0], LEVEL -> PWM_SET
+	ELSE
+		ARG[0], 0 -> PWM_SET
+		ARG[1], LEVEL -> PWM_SET
+	END
+	SPEED -> EXIT
+END
+
+PORT _MOTOR_INIT
+	18, FNK_MOTOR_HZ -> PWM_FREQ
+	21, FNK_MOTOR_HZ -> PWM_FREQ
+	7, FNK_MOTOR_HZ -> PWM_FREQ
+	9, FNK_MOTOR_HZ -> PWM_FREQ
+	0 -> _MOTOR1_
+	0 -> _MOTOR2_
+	0 -> _MOTOR3_
+	0 -> _MOTOR4_
+	0 -> EXIT
+END
+
+PORT _MOTOR1_
+	18, 19, ARG[0] -> FNK_WHEEL -> EXIT
+END
+
+PORT _MOTOR2_
+	21, 20, ARG[0] -> FNK_WHEEL -> EXIT
+END
+
+PORT _MOTOR3_
+	7, 6, ARG[0] -> FNK_WHEEL -> EXIT
+END
+
+PORT _MOTOR4_
+	9, 8, ARG[0] -> FNK_WHEEL -> EXIT
+END
+
+PORT _LEFT_
+	ARG[0] -> _MOTOR1_
+	ARG[0] -> _MOTOR2_
+	ARG[0] -> EXIT
+END
+
+PORT _RIGHT_
+	ARG[0] -> _MOTOR3_
+	ARG[0] -> _MOTOR4_
+	ARG[0] -> EXIT
+END
+
+PORT _DRIVE_
+	ARG[0] -> _LEFT_
+	ARG[1] -> _RIGHT_
+	0 -> EXIT
+END

@@ -1,0 +1,49 @@
+// adc.yaj - Pico 2 W ADC convenience ports
+// 使用するグローバルスロット: なし
+// ADC0_/ADC1_/ADC2_はGPIO26/GPIO27/GPIO28に対応します。
+
+def_port(ADC0_,    T_INT)
+def_port(ADC1_,    T_INT)
+def_port(ADC2_,    T_INT)
+def_port(ADC_MV_,  T_INT)
+def_port(ADC_PCT_, T_INT)
+def_port(TEMP_C_,  T_INT)
+
+PORT ADC0_
+    0 -> ADC_GET -> EXIT
+END
+
+PORT ADC1_
+    1 -> ADC_GET -> EXIT
+END
+
+PORT ADC2_
+    2 -> ADC_GET -> EXIT
+END
+
+// pin -> ADC_MV_ は、GPIO26..28の入力を0..3300mVへ換算します。
+PORT ADC_MV_
+    def_local(RAW, VAR[0])
+
+    ARG[0] -> ADC_PIN -> RAW
+    (RAW < 0) -> IFYES
+        -1 -> EXIT
+    END
+    RAW * 3300 / ADC_MAX -> EXIT
+END
+
+// pin -> ADC_PCT_ は、GPIO26..28の入力を0..100へ換算します。
+PORT ADC_PCT_
+    def_local(RAW, VAR[0])
+
+    ARG[0] -> ADC_PIN -> RAW
+    (RAW < 0) -> IFYES
+        -1 -> EXIT
+    END
+    RAW * 100 / ADC_MAX -> EXIT
+END
+
+// RP2350内部温度を摂氏100倍の整数で返します。
+PORT TEMP_C_
+    ADC_TEMP -> EXIT
+END
