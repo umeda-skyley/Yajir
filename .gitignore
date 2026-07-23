@@ -12,6 +12,8 @@
 # editor / OS
 Thumbs.db
 .DS_Store
+# Visual Studio のローカル状態（.suo/.ipch/Browse.VC.db 等）。生成物で肥大化するため非push。
+.vs/
 
 # CubeMX生成のmain.c（STMicroのテンプレート由来・コピーライト表記あり）は非公開に留める
 src/host/stm32_l476/main.c

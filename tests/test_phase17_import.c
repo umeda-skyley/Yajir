@@ -106,7 +106,7 @@ int main(void)
                     "INIT\n"
                     "    250 -> LIB_MS\n"            /* ライブラリの別名に書ける（GVAR[7]） */
                     "    21 -> LIB_DOUBLE -> GVAR[2]\n" /* ライブラリのスクリプトポートを呼べる */
-                    "    none -> LIB_START AFTER 10\n"   /* INIT からの即post は橋で捨てられる＝AFTER で張る（§10） */        /* ライブラリのハンドラを蹴れる */
+                    "    none -> LIB_START AFTER 10\n"   /* ライブラリのハンドラを蹴れる。INIT からの即post は橋で捨てられるので AFTER で張る（§10） */
                     "END\n"
                     "ON LIB_DONE\n"
                     "    \"done\" -> STDOUT\n"
