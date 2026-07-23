@@ -191,7 +191,7 @@ int main(void)
               "unexposed CFG_ name is an unknown name (internals hidden)");
     }
 
-    /* 11) スロット添字のコンパイル時定数式（v0.4.11）: CFG_*/別名/数値の四則で固定添字を書ける */
+    /* 11) スロット添字のコンパイル時定数式（v0.4.11）: CFG_*、別名、数値の四則で固定添字を書ける */
     {
         int bi;
         /* GVAR[CFG_GVAR_COUNT-1] = 最上位スロット（def_import ライブラリの「高位から降順」規約を移植可能に） */
