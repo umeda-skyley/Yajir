@@ -191,6 +191,35 @@ int main(void)
               "unexposed CFG_ name is an unknown name (internals hidden)");
     }
 
+    /* 11) スロット添字のコンパイル時定数式（v0.4.11）: CFG_*、別名、数値の四則で固定添字を書ける */
+    {
+        int bi;
+        /* GVAR[CFG_GVAR_COUNT-1] = 最上位スロット（def_import ライブラリの「高位から降順」規約を移植可能に） */
+        CHECK(compile("INIT\n    77 -> GVAR[CFG_GVAR_COUNT-1]\n    GVAR[CFG_GVAR_COUNT-1] -> OUT\nEND\n") == 0,
+              "GVAR[CFG_GVAR_COUNT-1] compiles (const-expr index)");
+        g_seqn = 0; bi = find_block(BLK_INIT); if (bi >= 0) run_block(bi, 0);
+        CHECK(g_seqn == 1 && g_seq[0] == 77, "const-expr index resolves to the top slot");
+
+        /* 別名の整数定数も添字に使える（従来は T_IDENT ゆえ弾かれていた） */
+        CHECK(compile("def_alias(IDX, 2)\nINIT\n    9 -> VAR[IDX]\n    VAR[IDX*1] -> OUT\nEND\n") == 0,
+              "alias int constant usable as index (VAR[IDX])");
+        g_seqn = 0; bi = find_block(BLK_INIT); if (bi >= 0) run_block(bi, 0);
+        CHECK(g_seqn == 1 && g_seq[0] == 9, "alias index resolves");
+
+        /* 括弧・乗除・剰余 */
+        CHECK(compile("INIT\n    5 -> GVAR[(CFG_GVAR_COUNT-2)*1]\nEND\n") == 0, "parens & mul in index");
+        /* 範囲外は従来どおり ERR_BAD_SLOT_INDEX（定数式でも静的に弾く） */
+        CHECK(compile("INIT\n    1 -> GVAR[CFG_GVAR_COUNT]\nEND\n") != 0, "const-expr out of range rejected");
+        /* def_alias 右辺のスロット添字にも効く＝ライブラリの高位スロット規約が書ける */
+        CHECK(compile("def_alias(LIB_TOP, GVAR[CFG_GVAR_COUNT-1])\nINIT\n    5 -> LIB_TOP\nEND\n") == 0,
+              "def_alias(..., GVAR[CFG_GVAR_COUNT-1]) compiles");
+        /* 添字にスロット別名（非整数）は使えない＝定数でないので拒否 */
+        CHECK(compile("def_alias(P, GVAR[0])\nINIT\n    1 -> VAR[P]\nEND\n") != 0,
+              "non-int name in index is rejected");
+        /* 0除算の定数式は添字エラー */
+        CHECK(compile("INIT\n    1 -> GVAR[1/0]\nEND\n") != 0, "divide-by-zero in const index rejected");
+    }
+
     printf("\n%s (failures=%d)\n", g_fail ? "PHASE2 FAILED" : "PHASE2 PASSED", g_fail);
     return g_fail ? 1 : 0;
 }

@@ -24,7 +24,7 @@
 
 /* Yajir 言語/実装バージョン。スクリプトからは入力ポート VERSION（str産出）で、
  * ホストからは script_version() で読める（§11, v0.4）。 */
-#define SCRIPT_VERSION "0.4.10"
+#define SCRIPT_VERSION "0.4.11"
 
 /* 出力ポートが受け取る値（型タグ付き）。SV_INTは数値、SV_STRは script_str()で文字列に
  * 解決して出力する（v0.4.2でCHARタグ撤去＝値は int/str の2択・§9。数を文字グリフで出すのは
@@ -138,6 +138,8 @@ typedef enum {
     ERR_NO_CLOCK,        /* 内部クロック未登録（§8, v0.4.8）。script_register_now を呼び忘れ＝時間が動かない */
     ERR_NO_IMPORT,       /* def_import があるがホストが取得関数を注入していない（§13, v0.4.10）。tok=ライブラリ名 */
     ERR_IMPORT_NOT_FOUND,/* 取得関数はあるがその名前のライブラリが無い（§13, v0.4.10）。tok=ライブラリ名 */
+    ERR_DUP_DEF,         /* スクリプト内ポートの二重定義（§3, v0.4.11）。def_port の再宣言 / PORT 本体の
+                          * 二重定義 / 既登録名との衝突。tok=その名前。ライブラリと本体の名前衝突で出やすい */
     ERR_SYNTAX           /* 上記に当てはまらない構文崩れ（受け皿） */
 } script_err_t;
 
