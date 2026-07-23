@@ -15,11 +15,10 @@
 *.ilk
 
 # editor / OS
+# Visual Studio のローカル状態（.suo/.ipch/Browse.VC.db 等）。生成物で肥大化するため非push。
 .vs/
 Thumbs.db
 .DS_Store
-# Visual Studio のローカル状態（.suo/.ipch/Browse.VC.db 等）。生成物で肥大化するため非push。
-.vs/
 
 # local design notes
 docs/work/
