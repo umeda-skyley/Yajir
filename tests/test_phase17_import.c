@@ -236,6 +236,41 @@ int main(void)
         CHECK(script_last_error()->src_name[0] == '\0', "src_name is empty again for the main script");
     }
 
+    /* 12) スクリプト内ポートの二重定義は本体⇄ライブラリをまたいでも ERR_DUP_DEF（v0.4.11）。
+     *     LIB_GOOD は def_port(LIB_DOUBLE)+PORT LIB_DOUBLE を持つ。アプリが同名を再定義したら弾く。 */
+    {
+        int r;
+        /* (a) アプリが def_port を再宣言 */
+        setup(arena, sizeof(arena), 1);
+        r = compile("def_import(\"good\")\n"
+                    "def_port(LIB_DOUBLE, T_INT)\n"
+                    "PORT LIB_DOUBLE\n    9 -> EXIT\nEND\n"
+                    "INIT\n    1 -> GVAR[0]\nEND\n");
+        CHECK(r == ERR_DUP_DEF, "re-declaring a library's def_port -> ERR_DUP_DEF");
+        CHECK(script_last_error()->src_name[0] == '\0', "…blamed on the main script");
+        CHECK(strcmp(script_last_error()->tok, "LIB_DOUBLE") == 0, "…names the clashing port");
+
+        /* (b) アプリが PORT 本体だけ書く（def_port なし）＝本体二重定義 */
+        setup(arena, sizeof(arena), 1);
+        r = compile("def_import(\"good\")\n"
+                    "PORT LIB_DOUBLE\n    9 -> EXIT\nEND\n"
+                    "INIT\n    1 -> GVAR[0]\nEND\n");
+        CHECK(r == ERR_DUP_DEF, "re-defining a library's PORT body -> ERR_DUP_DEF");
+
+        /* (c) アプリが def_handler で同名を奪おうとする（種別衝突） */
+        setup(arena, sizeof(arena), 1);
+        r = compile("def_import(\"good\")\n"
+                    "def_handler(LIB_DOUBLE)\n"
+                    "INIT\n    1 -> GVAR[0]\nEND\n");
+        CHECK(r == ERR_DUP_DEF, "def_handler colliding with a library port -> ERR_DUP_DEF");
+
+        /* (d) クリーンな利用は通る（回帰防止） */
+        setup(arena, sizeof(arena), 1);
+        r = compile("def_import(\"good\")\n"
+                    "INIT\n    21 -> LIB_DOUBLE -> GVAR[0]\nEND\n");
+        CHECK(r == 0 && (run_ticks(1), vm()->gvar[0].i == 42), "clean use of the library port still works");
+    }
+
     printf(g_fail ? "PHASE17 FAILED (failures=%d)\n" : "PHASE17 PASSED (failures=%d)\n", g_fail);
     return g_fail ? 1 : 0;
 }

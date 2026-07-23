@@ -226,16 +226,61 @@ static int add_block(block_kind_t kind)
 /* ---- 式 ---- */
 static void parse_expr(void);
 
+/* ---- スロット添字 `SLOT[...]` のコンパイル時定数式（v0.4.11） ----
+ * オペランド＝数値リテラル／`CFG_*` 寸法定数（§3 v0.4.9）／`def_alias` の整数定数（AL_INT）。
+ * 演算＝`+ - * / %` と括弧・単項符号。すべてコンパイル時に畳む（実行時コストゼロ・バイトコードに
+ * 残らない）。これで `GVAR[CFG_GVAR_COUNT-1]` のような**プラットフォーム非依存な固定添字**が書ける
+ * （とくに def_import ライブラリが「高位スロットから降順に取る」規約を移植可能に書けるようになる）。
+ * 添字は静的に確定する必要があるので、これは動的添字 `N -> SLOT`（OP_INDEX・§4）とは別物。 */
+static int32_t const_expr(const char *slot);   /* 前方宣言（括弧で相互再帰） */
+
+static int32_t const_factor(const char *slot)
+{
+    if (P.cur.type == T_MINUS)  { adv(); return -const_factor(slot); }
+    if (P.cur.type == T_PLUS)   { adv(); return  const_factor(slot); }
+    if (P.cur.type == T_LPAREN) { int32_t v; adv(); v = const_expr(slot); expect(T_RPAREN, "')'"); return v; }
+    if (P.cur.type == T_NUMBER) { int32_t v = P.cur.num; adv(); return v; }
+    if (P.cur.type == T_IDENT) {                 /* CFG_* / def_alias の整数定数のみ */
+        int32_t cv; const alias_t *al;
+        if (cfg_const_find(P.cur.text, &cv))      { adv(); return cv; }
+        al = alias_find(P.cur.text);
+        if (al && al->kind == AL_INT)             { adv(); return al->v; }
+    }
+    fail_tok(P.cur.line, ERR_BAD_SLOT_INDEX, slot);   /* 定数でない名前/トークン＝添字にできない */
+    return 0;                                         /* 到達しない（fail は longjmp） */
+}
+
+static int32_t const_term(const char *slot)
+{
+    int32_t v = const_factor(slot);
+    for (;;) {
+        if      (P.cur.type == T_STAR)  { adv(); v = v * const_factor(slot); }
+        else if (P.cur.type == T_SLASH) { int line = P.cur.line; adv(); { int32_t d = const_factor(slot); if (d == 0) fail_tok(line, ERR_BAD_SLOT_INDEX, slot); v = v / d; } }
+        else if (P.cur.type == T_PCT)   { int line = P.cur.line; adv(); { int32_t d = const_factor(slot); if (d == 0) fail_tok(line, ERR_BAD_SLOT_INDEX, slot); v = v % d; } }
+        else break;
+    }
+    return v;
+}
+
+static int32_t const_expr(const char *slot)
+{
+    int32_t v = const_term(slot);
+    for (;;) {
+        if      (P.cur.type == T_PLUS)  { adv(); v = v + const_term(slot); }
+        else if (P.cur.type == T_MINUS) { adv(); v = v - const_term(slot); }
+        else break;
+    }
+    return v;
+}
+
 static int read_index(int limit, const char *slot)
 {
-    int idx;
+    int32_t idx;
     expect(T_LBRACKET, "'['");
-    if (P.cur.type != T_NUMBER) fail_tok(P.cur.line, ERR_BAD_SLOT_INDEX, slot);  /* 添字が定数でない */
-    idx = P.cur.num;
-    adv();
+    idx = const_expr(slot);         /* 数値リテラル or CFG_・別名の整数定数式（v0.4.11） */
     expect(T_RBRACKET, "']'");
     if (idx < 0 || idx >= limit) fail_tok(P.cur.line, ERR_BAD_SLOT_INDEX, slot); /* 範囲外（tok=スロット名） */
-    return idx;
+    return (int)idx;
 }
 
 /* 直近に解析した(部分)式の静的型（型分離のため, §4） */
@@ -988,8 +1033,8 @@ static void parse_def_handler(void)
     if (is_reserved_name(name) || alias_find(name)) fail_tok(line, ERR_SYNTAX, name);
     pi = vm_find_port(name);
     if (pi >= 0) {
-        if (vm()->ports[pi].kind == PK_HANDLER) return;   /* 既にハンドラ源＝冪等 no-op */
-        fail_tok(line, ERR_SYNTAX, name);                 /* 既登録の非handlerポート/定数と衝突 */
+        if (vm()->ports[pi].kind == PK_HANDLER) return;   /* 既にハンドラ源＝冪等 no-op（weak link の受け皿） */
+        fail_tok(line, ERR_DUP_DEF, name);                /* 既登録の非handlerポート/定数と衝突（v0.4.11） */
     }
     /* 新規登録。ポート表満杯なら add_port は登録せず（黙ってNULL）→ 見つからないので検出 */
     script_register_handler(name);
@@ -1022,8 +1067,8 @@ static void parse_def_port(void)
      * ポート表はロード間で残るため、再ロードでの再宣言を許す必要がある）。 */
     if (is_reserved_name(name) || alias_find(name)) fail_tok(line, ERR_SYNTAX, name);
     pi = vm_find_port(name);
-    if (pi >= 0 && vm()->ports[pi].kind != PK_SCRIPT) fail_tok(line, ERR_SYNTAX, name);
-    if (pi >= 0 && script_sidx_of(pi) >= 0) fail_tok(line, ERR_SYNTAX, name);  /* 同一スクリプト内の二重宣言 */
+    if (pi >= 0 && vm()->ports[pi].kind != PK_SCRIPT) fail_tok(line, ERR_DUP_DEF, name);  /* 既登録の別種ポートと同名（v0.4.11） */
+    if (pi >= 0 && script_sidx_of(pi) >= 0) fail_tok(line, ERR_DUP_DEF, name);  /* 同一ロード内の def_port 二重宣言（ライブラリ⇄本体含む, v0.4.11） */
     if (s_nscript_ports >= CFG_MAX_SCRIPT_PORTS) fail_tok(line, ERR_TOO_MANY_PORTS, name);
     script_register_script_port(name, ot);            /* 既存なら上書き再束縛・bc_start=0xFFFF（本体未定義） */
     pi = vm_find_port(name);
@@ -1044,8 +1089,8 @@ static void parse_port_block(void)
     strncpy(name, P.cur.text, CFG_MAX_NAME - 1); name[CFG_MAX_NAME - 1] = '\0';
     adv();
     pi = vm_find_port(name);
-    if (pi < 0 || vm()->ports[pi].kind != PK_SCRIPT) fail_tok(line, ERR_SYNTAX, name);  /* def_port 宣言が無い */
-    if (vm()->ports[pi].bc_start != 0xFFFF)          fail_tok(line, ERR_SYNTAX, name);  /* 本体二重定義 */
+    if (pi < 0 || vm()->ports[pi].kind != PK_SCRIPT) fail_tok(line, ERR_SYNTAX, name);   /* def_port 宣言が無い */
+    if (vm()->ports[pi].bc_start != 0xFFFF)          fail_tok(line, ERR_DUP_DEF, name);  /* PORT 本体の二重定義（v0.4.11） */
     sidx = script_sidx_of(pi);
     expect_newline();
     vm()->ports[pi].bc_start = (uint16_t)here();      /* 本体開始を確定（前方参照はこの番号で解決） */
