@@ -1,0 +1,136 @@
+// Cardputer用の画像オブジェクトライブラリです。
+// 画像値の内部形式は id:path:x:y:width:height ですが、
+// アプリ側では分解せず、不透明な値として扱います。
+def_port(_IMG_LOADER_,  T_STR)
+def_port(_IMG_MOVE_,    T_STR)
+def_port(_IMG_LOCATE_,  T_STR)
+def_port(_IMG_RESIZE_,  T_STR)
+def_port(_IMG_ADD_,     T_STR)
+def_port(_IMG_DRAW_,    T_STR)
+def_port(_IMG_RELEASE_, T_INT)
+
+PORT _IMG_LOADER_
+    def_local(ID,     VAR[0])
+    def_local(WIDTH,  VAR[1])
+    def_local(HEIGHT, VAR[2])
+
+    "loadImage", SARG[0] -> DISPLAY -> ID
+    (ID < 0) -> IFYES
+        "%d:%s:0:0:0:0", ID, SARG[0] -> FORMATTER -> EXIT
+    END
+    "imageWidth", ID -> DISPLAY -> WIDTH
+    "imageHeight", ID -> DISPLAY -> HEIGHT
+    "%d:%s:0:0:%d:%d", ID, SARG[0], WIDTH, HEIGHT -> FORMATTER -> EXIT
+END
+
+// IMAGE, dx, dy -> _IMG_MOVE_ -> IMAGE
+PORT _IMG_MOVE_
+    def_local(ID,     VAR[0])
+    def_local(X,      VAR[1])
+    def_local(Y,      VAR[2])
+    def_local(WIDTH,  VAR[3])
+    def_local(HEIGHT, VAR[4])
+    def_local(NAME,   SVAR[0])
+    def_local(TEMP,   SVAR[1])
+
+    SARG[0], ":", 1 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> ID
+    SARG[0], ":", 2 -> FIELD -> NAME
+    SARG[0], ":", 3 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> X
+    SARG[0], ":", 4 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> Y
+    SARG[0], ":", 5 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> WIDTH
+    SARG[0], ":", 6 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> HEIGHT
+    "%d:%s:%d:%d:%d:%d", ID, NAME, X + ARG[1], Y + ARG[2], WIDTH, HEIGHT -> FORMATTER -> EXIT
+END
+
+// IMAGE, x, y -> _IMG_LOCATE_ -> IMAGE
+PORT _IMG_LOCATE_
+    def_local(ID,     VAR[0])
+    def_local(WIDTH,  VAR[1])
+    def_local(HEIGHT, VAR[2])
+    def_local(NAME,   SVAR[0])
+    def_local(TEMP,   SVAR[1])
+
+    SARG[0], ":", 1 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> ID
+    SARG[0], ":", 2 -> FIELD -> NAME
+    SARG[0], ":", 5 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> WIDTH
+    SARG[0], ":", 6 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> HEIGHT
+    "%d:%s:%d:%d:%d:%d", ID, NAME, ARG[1], ARG[2], WIDTH, HEIGHT -> FORMATTER -> EXIT
+END
+
+// IMAGE, width, height -> _IMG_RESIZE_ -> IMAGE
+PORT _IMG_RESIZE_
+    def_local(ID,   VAR[0])
+    def_local(X,    VAR[1])
+    def_local(Y,    VAR[2])
+    def_local(NAME, SVAR[0])
+    def_local(TEMP, SVAR[1])
+
+    SARG[0], ":", 1 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> ID
+    SARG[0], ":", 2 -> FIELD -> NAME
+    SARG[0], ":", 3 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> X
+    SARG[0], ":", 4 -> FIELD -> TEMP
+    TEMP, 10 -> STRTOL -> Y
+    "%d:%s:%d:%d:%d:%d", ID, NAME, X, Y, ARG[1], ARG[2] -> FORMATTER -> EXIT
+END
+
+// IMAGE1, IMAGE2 -> _IMG_ADD_ で描画リストを作ります。
+// 戻り値と次の画像を再び_ADD_すれば、さらに追加できます。
+PORT _IMG_ADD_
+    "%s,%s", SARG[0], SARG[1] -> FORMATTER -> EXIT
+END
+
+// 画像または描画リストを左から順番に描画し、元の値を返します。
+PORT _IMG_DRAW_
+    def_local(ID,     VAR[0])
+    def_local(X,      VAR[1])
+    def_local(Y,      VAR[2])
+    def_local(WIDTH,  VAR[3])
+    def_local(HEIGHT, VAR[4])
+    def_local(ITEM,   SVAR[0])
+    def_local(TEMP,   SVAR[1])
+
+    8 -> REPEAT
+        SARG[0], ",", ITR -> FIELD -> ITEM
+        ITEM -> COUNTER -> IFYES
+            ITEM, ":", 1 -> FIELD -> TEMP
+            TEMP, 10 -> STRTOL -> ID
+            ITEM, ":", 3 -> FIELD -> TEMP
+            TEMP, 10 -> STRTOL -> X
+            ITEM, ":", 4 -> FIELD -> TEMP
+            TEMP, 10 -> STRTOL -> Y
+            ITEM, ":", 5 -> FIELD -> TEMP
+            TEMP, 10 -> STRTOL -> WIDTH
+            ITEM, ":", 6 -> FIELD -> TEMP
+            TEMP, 10 -> STRTOL -> HEIGHT
+            "drawImage", ID, X, Y, WIDTH, HEIGHT -> DISPLAY
+        END
+    END
+    SARG[0] -> EXIT
+END
+
+// 画像または描画リストが使用しているスロットを解放します。
+PORT _IMG_RELEASE_
+    def_local(ID,   VAR[0])
+    def_local(ITEM, SVAR[0])
+    def_local(TEMP, SVAR[1])
+
+    8 -> REPEAT
+        SARG[0], ",", ITR -> FIELD -> ITEM
+        ITEM -> COUNTER -> IFYES
+            ITEM, ":", 1 -> FIELD -> TEMP
+            TEMP, 10 -> STRTOL -> ID
+            "releaseImage", ID -> DISPLAY
+        END
+    END
+    0 -> EXIT
+END

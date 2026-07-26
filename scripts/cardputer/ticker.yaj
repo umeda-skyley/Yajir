@@ -1,0 +1,27 @@
+// Cardputerの画面を右から左へ流れる簡単なティッカーです。
+def_import("display")
+
+def_alias(TICKER_X, GVAR[0])
+def_handler(TICKER_STEP)
+
+INIT
+    2 -> TFT_TEXT_SIZE
+    TFT_YELLOW, TFT_BLACK -> TFT_TEXT_COLOR
+    TFT_WIDTH -> TICKER_X
+    0 -> TICKER_STEP AFTER 0
+END
+
+MAIN
+END
+
+ON TICKER_STEP
+    TFT_BLACK -> TFT_CLEAR
+    TICKER_X, 50 -> TFT_CURSOR
+    "HELLO YAJIR!" -> TFT_TEXT
+    TICKER_X - 4 -> TICKER_X
+
+    (TICKER_X < -150) -> IFYES
+        TFT_WIDTH -> TICKER_X
+    END
+    0 -> TICKER_STEP AFTER 40
+END

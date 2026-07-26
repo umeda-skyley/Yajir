@@ -25,6 +25,7 @@ docs/work/
 
 # local board upload helpers
 src/host/nano_r4/upload.cmd
+src/host/cardputer/upload.cmd
 
 # CubeMX生成のmain.c（STMicroのテンプレート由来・コピーライト表記あり）は非公開に留める
 src/host/stm32_l476/main.c

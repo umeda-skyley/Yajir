@@ -1,0 +1,4 @@
+// CardputerのTFTとUSB serialへ同じ文字列を表示します。
+MAIN
+    "Hello from Yajir on Cardputer!" -> STDOUT
+END

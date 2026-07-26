@@ -1,0 +1,51 @@
+// Cardputer内蔵スピーカー用ライブラリです。
+// _BUZZER_、_BEEP_、BUZZER_ENDはFNK0089版と共通です。
+def_alias(NOTE_C4, 262)
+def_alias(NOTE_D4, 294)
+def_alias(NOTE_E4, 330)
+def_alias(NOTE_F4, 349)
+def_alias(NOTE_G4, 392)
+def_alias(NOTE_A4, 440)
+def_alias(NOTE_B4, 494)
+def_alias(NOTE_C5, 523)
+
+def_port(SPEAKER_TONE, T_INT)
+def_port(SPEAKER_VOLUME, T_INT)
+def_port(SPEAKER_STOP, T_INT)
+def_port(_BUZZER_, T_INT)
+def_port(_BEEP_, T_INT)
+def_handler(CARD_BUZZ_END)
+def_handler(BUZZER_END)
+
+PORT SPEAKER_TONE
+    "tone", ARG[0], ARG[1] -> SPEAKER -> EXIT
+END
+
+PORT SPEAKER_VOLUME
+    "setVolume", ARG[0] -> SPEAKER -> EXIT
+END
+
+PORT SPEAKER_STOP
+    "stop" -> SPEAKER -> EXIT
+END
+
+// hz -> _BUZZER_ で連続発音、0で停止します。
+PORT _BUZZER_
+    (ARG[0] <= 0) -> IFYES
+        none -> SPEAKER_STOP
+        0 -> EXIT
+    END
+    ARG[0], 0 -> SPEAKER_TONE
+    ARG[0] -> EXIT
+END
+
+// hz, ms -> _BEEP_ で発音し、時間後にBUZZER_ENDを通知します。
+PORT _BEEP_
+    ARG[0], ARG[1] -> SPEAKER_TONE
+    0 -> CARD_BUZZ_END AFTER ARG[1]
+    ARG[0] -> EXIT
+END
+
+ON CARD_BUZZ_END
+    "BUZZER_END" -> INVOKER
+END

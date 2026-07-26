@@ -1,0 +1,11 @@
+// Cardputerの標準フォントを2倍で表示します。
+def_import("display")
+
+INIT
+    2 -> TFT_TEXT_SIZE
+    "Yajir Cardputer" -> STDOUT
+    "text size=", TFT_TEXT_SIZE_ -> STDOUT
+END
+
+MAIN
+END

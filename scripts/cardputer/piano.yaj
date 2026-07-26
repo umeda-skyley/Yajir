@@ -1,0 +1,36 @@
+// microSD直下へautorun.yajとして置くと、AからKまでが鍵盤になります。
+def_import("sound")
+
+ON KEYBOARD
+    (ARG[0] == 'a') -> IFYES
+        NOTE_C4, 180 -> _BEEP_
+    END
+    (ARG[0] == 's') -> IFYES
+        NOTE_D4, 180 -> _BEEP_
+    END
+    (ARG[0] == 'd') -> IFYES
+        NOTE_E4, 180 -> _BEEP_
+    END
+    (ARG[0] == 'f') -> IFYES
+        NOTE_F4, 180 -> _BEEP_
+    END
+    (ARG[0] == 'g') -> IFYES
+        NOTE_G4, 180 -> _BEEP_
+    END
+    (ARG[0] == 'h') -> IFYES
+        NOTE_A4, 180 -> _BEEP_
+    END
+    (ARG[0] == 'j') -> IFYES
+        NOTE_B4, 180 -> _BEEP_
+    END
+    (ARG[0] == 'k') -> IFYES
+        NOTE_C5, 180 -> _BEEP_
+    END
+END
+
+INIT
+    128 -> SPEAKER_VOLUME
+END
+
+MAIN
+END

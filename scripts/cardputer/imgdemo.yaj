@@ -1,0 +1,32 @@
+// SDの /img/cat.png を読み込み、画面の左から右へ動かします。
+def_import("display")
+def_import("image")
+
+def_alias(CAT,  SGVAR[0])
+def_alias(STEP, GVAR[0])
+def_handler(IMG_STEP)
+
+INIT
+    TFT_BLACK -> TFT_CLEAR
+    "img/cat.png" -> _IMG_LOADER_ -> CAT
+    CAT, 32, 32 -> _IMG_RESIZE_ -> CAT
+    CAT, -32, 50 -> _IMG_LOCATE_ -> CAT
+    0 -> STEP
+    0 -> IMG_STEP AFTER 0
+END
+
+MAIN
+END
+
+ON IMG_STEP
+    TFT_BLACK -> TFT_FRAME_BEGIN
+    CAT, 4, 0 -> _IMG_MOVE_ -> _IMG_DRAW_ -> CAT
+    0 -> TFT_FRAME_END
+    STEP + 1 -> STEP
+
+    (STEP >= 68) -> IFYES
+        CAT, -32, 50 -> _IMG_LOCATE_ -> CAT
+        0 -> STEP
+    END
+    0 -> IMG_STEP AFTER 40
+END

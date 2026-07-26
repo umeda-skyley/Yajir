@@ -1,0 +1,95 @@
+// Cardputer DISPLAYポート用の描画ライブラリです。
+// 使用するグローバルスロット: なし
+
+def_alias(TFT_WIDTH,   240)
+def_alias(TFT_HEIGHT,  135)
+def_alias(TFT_BLACK,     0)
+def_alias(TFT_WHITE, 65535)
+def_alias(TFT_RED,   63488)
+def_alias(TFT_GREEN,  2016)
+def_alias(TFT_BLUE,     31)
+def_alias(TFT_CYAN,   2047)
+def_alias(TFT_MAGENTA,63519)
+def_alias(TFT_YELLOW, 65504)
+
+def_port(TFT_TEXT_SIZE,   T_INT)
+def_port(TFT_TEXT_SIZE_,  T_INT)
+def_port(TFT_TEXT_COLOR,  T_INT)
+def_port(TFT_CURSOR,      T_INT)
+def_port(TFT_TEXT,        T_INT)
+def_port(TFT_CLEAR,       T_INT)
+def_port(TFT_PIXEL,       T_INT)
+def_port(TFT_LINE,        T_INT)
+def_port(TFT_RECT,        T_INT)
+def_port(TFT_FILL_RECT,   T_INT)
+def_port(TFT_CIRCLE,      T_INT)
+def_port(TFT_FILL_CIRCLE, T_INT)
+def_port(TFT_BRIGHTNESS,  T_INT)
+def_port(TFT_IMAGE,       T_INT)
+def_port(TFT_FRAME_BEGIN, T_INT)
+def_port(TFT_FRAME_END,   T_INT)
+
+PORT TFT_TEXT_SIZE
+    "setTextSize", ARG[0] -> DISPLAY -> EXIT
+END
+
+PORT TFT_TEXT_SIZE_
+    "getTextSize" -> DISPLAY -> EXIT
+END
+
+PORT TFT_TEXT_COLOR
+    "setTextColor", ARG[0], ARG[1] -> DISPLAY -> EXIT
+END
+
+PORT TFT_CURSOR
+    "setCursor", ARG[0], ARG[1] -> DISPLAY -> EXIT
+END
+
+PORT TFT_TEXT
+    "print", SARG[0] -> DISPLAY -> EXIT
+END
+
+PORT TFT_CLEAR
+    "fillScreen", ARG[0] -> DISPLAY -> EXIT
+END
+
+PORT TFT_PIXEL
+    "drawPixel", ARG[0], ARG[1], ARG[2] -> DISPLAY -> EXIT
+END
+
+PORT TFT_LINE
+    "drawLine", ARG[0], ARG[1], ARG[2], ARG[3], ARG[4] -> DISPLAY -> EXIT
+END
+
+PORT TFT_RECT
+    "drawRect", ARG[0], ARG[1], ARG[2], ARG[3], ARG[4] -> DISPLAY -> EXIT
+END
+
+PORT TFT_FILL_RECT
+    "fillRect", ARG[0], ARG[1], ARG[2], ARG[3], ARG[4] -> DISPLAY -> EXIT
+END
+
+PORT TFT_CIRCLE
+    "drawCircle", ARG[0], ARG[1], ARG[2], ARG[3] -> DISPLAY -> EXIT
+END
+
+PORT TFT_FILL_CIRCLE
+    "fillCircle", ARG[0], ARG[1], ARG[2], ARG[3] -> DISPLAY -> EXIT
+END
+
+PORT TFT_BRIGHTNESS
+    "setBrightness", ARG[0] -> DISPLAY -> EXIT
+END
+
+PORT TFT_IMAGE
+    "image", SARG[0], ARG[1], ARG[2], ARG[3], ARG[4] -> DISPLAY -> EXIT
+END
+
+// color -> TFT_FRAME_BEGIN からTFT_FRAME_ENDまでを裏画面へ描画します。
+PORT TFT_FRAME_BEGIN
+    "beginFrame", ARG[0] -> DISPLAY -> EXIT
+END
+
+PORT TFT_FRAME_END
+    "endFrame" -> DISPLAY -> EXIT
+END

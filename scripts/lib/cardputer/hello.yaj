@@ -1,0 +1,7 @@
+// microSDの/lib/hello.yajとして配置します。
+def_handler(SD_HELLO)
+
+ON SD_HELLO
+    "Hello from microSD library!" -> STDOUT
+    "SD size: ", SD_SIZE, " MB" -> STDOUT
+END

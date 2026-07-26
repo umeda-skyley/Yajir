@@ -1,0 +1,7 @@
+// Cardputerで新しく押されたキーと修飾キービットを表示します。
+ON KEYBOARD
+    "key='", SARG[2], "' code=", ARG[0], " mods=", ARG[1] -> STDOUT
+END
+
+MAIN
+END
