@@ -1,0 +1,171 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Yajir",
+  "scopeName": "source.yajir",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#blocks"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#slots"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#ports"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.yajir",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.yajir",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.yajir",
+              "match": "\\\\(?:[rnt\\\\\"]|$)"
+            }
+          ]
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(def_alias|def_handler|def_port|def_local|def_auto|def_import)(\\s*)(\\()(\\s*)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.declaration.yajir"
+            },
+            "3": {
+              "name": "punctuation.definition.parameters.begin.yajir"
+            },
+            "5": {
+              "name": "entity.name.function.yajir"
+            }
+          }
+        },
+        {
+          "name": "storage.type.declaration.yajir",
+          "match": "\\b(?:def_alias|def_handler|def_port|def_local|def_auto|def_import)\\b"
+        }
+      ]
+    },
+    "blocks": {
+      "patterns": [
+        {
+          "match": "^\\s*(ON|PORT)(\\s+)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.yajir"
+            },
+            "3": {
+              "name": "entity.name.function.yajir"
+            }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.yajir",
+          "match": "\\b(?:INIT|MAIN|ON|PORT|END|ELSE|IFYES|REPEAT|AFTER|EXIT)\\b"
+        },
+        {
+          "name": "keyword.operator.word.yajir",
+          "match": "\\b(?:AND|OR|NOT)\\b"
+        }
+      ]
+    },
+    "slots": {
+      "patterns": [
+        {
+          "name": "variable.language.slot.yajir",
+          "match": "\\b(?:GVAR|VAR|ARG|SGVAR|SVAR|SARG|RESULT|SRESULT|STATUS|ITR)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.yajir",
+          "match": "\\b0[xX][0-9A-Fa-f](?:_?[0-9A-Fa-f])*\\b"
+        },
+        {
+          "name": "constant.numeric.binary.yajir",
+          "match": "\\b0[bB][01](?:_?[01])*\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.yajir",
+          "match": "\\b[0-9](?:_?[0-9])*\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.yajir",
+          "match": "\\b(?:none|T_INT|T_STR|PWM_MAX|ADC_MAX|GPIO_IN|GPIO_OUT|GPIO_IN_PULLUP|GPIO_IN_PULLDOWN|GPIO_IRQ_RISE|GPIO_IRQ_FALL|GPIO_IRQ_HIGH|GPIO_IRQ_LOW|ERR_[A-Z0-9_]+|CFG_[A-Z0-9_]+)\\b"
+        }
+      ]
+    },
+    "ports": {
+      "patterns": [
+        {
+          "name": "support.function.port.yajir",
+          "match": "\\b(?:STDOUT|WAIT|TIMER|CLEAR_ERR|INVOKER|HANDLER|ARGC|CODE_USED|STR_USED|VERSION|NOW|RAND|SEED|CLAMP|MAP|MIN|MAX|ABS|SLICER|MERGER|COUNTER|FORMATTER|EQUALS|FINDER|STRTOL|CHR|ASC|FIELD|UPPER|LOWER|TRIMMER|LED1|DELAY|HTTP_SYNC|HTTP_ASYNC|GPT_SYNC|GPT_ASYNC|GPT_HISTORY|CLAUDE_SYNC|CLAUDE_ASYNC|CLAUDE_HISTORY|GEMINI_SYNC|GEMINI_ASYNC|GEMINI_HISTORY|FILE_READER|FILE_WRITER|GPIO_GET|GPIO_SET|GPIO_MODE|GPIO_TOGGLE|GPIO_PULSE|PULSE_IN|GPIO_IRQ_ENABLE|GPIO_IRQ_DISABLE|ADC_GET|ADC_PIN|ADC_TEMP|PWM_SET|PWM_GET|PWM_FREQ|I2C0_OPEN|I2C0_WRITE|I2C0_WRITE8|I2C0_READ8|RGB_LED|RGB_PWM)\\b"
+        },
+        {
+          "name": "variable.other.constant.yajir",
+          "match": "\\b_?[A-Z][A-Z0-9_]*_?\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.yajir",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.arithmetic.yajir",
+          "match": "(?:<<|>>|>=|<=|==|!=|[+\\-*/%&|^~><])"
+        },
+        {
+          "name": "punctuation.separator.comma.yajir",
+          "match": ","
+        }
+      ]
+    }
+  }
+}

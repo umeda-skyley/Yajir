@@ -1,0 +1,65 @@
+{
+  "INIT block": {
+    "prefix": "init",
+    "body": [
+      "INIT",
+      "\t${1}",
+      "END"
+    ],
+    "description": "Create an INIT block"
+  },
+  "MAIN block": {
+    "prefix": "main",
+    "body": [
+      "MAIN",
+      "\t${1:1000 -> WAIT}",
+      "END"
+    ],
+    "description": "Create a MAIN block"
+  },
+  "Event handler": {
+    "prefix": "on",
+    "body": [
+      "ON ${1:HANDLER}",
+      "\t${2}",
+      "END"
+    ],
+    "description": "Create an event handler"
+  },
+  "Script port": {
+    "prefix": "port",
+    "body": [
+      "def_port(${1:PORT_NAME}, ${2:T_INT})",
+      "",
+      "PORT ${1:PORT_NAME}",
+      "\t${3:ARG[0] -> EXIT}",
+      "END"
+    ],
+    "description": "Declare and implement a script port"
+  },
+  "Automatic local slot": {
+    "prefix": "defauto",
+    "body": [
+      "def_auto(${1:NAME}${2:, T_INT})"
+    ],
+    "description": "Declare an automatically allocated local VAR or SVAR slot"
+  },
+  "Conditional": {
+    "prefix": "ifyes",
+    "body": [
+      "(${1:condition}) -> IFYES",
+      "\t${2}",
+      "END"
+    ],
+    "description": "Create an IFYES block"
+  },
+  "Repeat": {
+    "prefix": "repeat",
+    "body": [
+      "${1:10} -> REPEAT",
+      "\t${2}",
+      "END"
+    ],
+    "description": "Create a REPEAT block"
+  }
+}

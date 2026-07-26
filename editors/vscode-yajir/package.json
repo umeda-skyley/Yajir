@@ -1,0 +1,130 @@
+{
+  "name": "yajir-language",
+  "displayName": "Yajir Language Support",
+  "description": "Syntax highlighting, compiler diagnostics, and PC-extension execution for Yajir scripts.",
+  "version": "0.1.2",
+  "publisher": "umeda-skyley",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/umeda-skyley/Yajir.git",
+    "directory": "editors/vscode-yajir"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "yajir",
+    "embedded",
+    "raspberry-pi-pico",
+    "arduino"
+  ],
+  "activationEvents": [
+    "onLanguage:yajir",
+    "onCommand:yajir.check",
+    "onCommand:yajir.run"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "yajir",
+        "aliases": [
+          "Yajir",
+          "yajir"
+        ],
+        "extensions": [
+          ".yaj"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "yajir",
+        "scopeName": "source.yajir",
+        "path": "./syntaxes/yajir.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "yajir.check",
+        "title": "Yajir: Check Current Script",
+        "category": "Yajir",
+        "icon": "$(check)"
+      },
+      {
+        "command": "yajir.run",
+        "title": "Yajir: Run Current Script",
+        "category": "Yajir",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "yajir.check",
+          "when": "resourceLangId == yajir",
+          "group": "navigation@10"
+        },
+        {
+          "command": "yajir.run",
+          "when": "resourceLangId == yajir",
+          "group": "navigation@11"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "yajir.check",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "editorTextFocus && editorLangId == yajir"
+      }
+    ],
+    "configuration": {
+      "title": "Yajir",
+      "properties": {
+        "yajir.loaderPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the PC-extension Yajir loader. Empty selects the newest script_extension executable under the workspace build directory.",
+          "scope": "resource"
+        },
+        "yajir.workingDirectory": {
+          "type": "string",
+          "default": "${workspaceFolder}",
+          "description": "Working directory used by the PC-extension loader. Supports ${workspaceFolder} and ${fileDirname}.",
+          "scope": "resource"
+        },
+        "yajir.runSeconds": {
+          "type": "integer",
+          "default": -1,
+          "minimum": -1,
+          "description": "Automatic stop time for Run in seconds. -1 keeps running until ESC or terminal stop.",
+          "scope": "resource"
+        },
+        "yajir.revealOutputOnSuccess": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reveal the Yajir output channel after a successful compiler check.",
+          "scope": "resource"
+        }
+      }
+    },
+    "snippets": [
+      {
+        "language": "yajir",
+        "path": "./snippets/yajir.json"
+      }
+    ]
+  },
+  "scripts": {
+    "check": "node --check extension.js",
+    "package": "vsce package --no-dependencies"
+  }
+}

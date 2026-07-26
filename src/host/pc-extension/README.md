@@ -5,15 +5,15 @@ Windows PC拡張ホストに追加されるHTTP、AI、ファイルI/Oポート�
 
 ## ホスト構成
 
-このディレクトリは標準PCホストの差し替え実装です。エントリポイントと公開ヘッダは
-`src/host/pc/main.c`、`src/host/pc/host_mock.h`をそのまま再利用します。拡張版を作るときは
-標準の`src/host/pc/host_mock.c`をリンクせず、代わりに以下をリンクします。
+このディレクトリは標準PCホストの差し替え実装です。公開ヘッダは
+`src/host/pc/host_mock.h`を再利用します。拡張版を作るときは標準の
+`src/host/pc/main.c`と`src/host/pc/host_mock.c`をリンクせず、代わりに以下をリンクします。
 
+- `src/host/pc-extension/main.c`
 - `src/host/pc-extension/host_extension.c`
 - `src/host/pc-extension/netutil.c`
 - `src/host/pc-extension/fileutil.c`
 - `src/host/common/host_diag.c`
-- `src/host/pc/main.c`
 - `src/core/*.c`
 
 インクルードパスには`src/core`、`src/host/common`、`src/host/pc`、
@@ -25,6 +25,23 @@ YJ_PORT_HEADER="yajir_port_pc_extension.h"
 ```
 
 WindowsのWinINetを使用するため、リンク時に`wininet.lib`が必要です。
+
+## 起動とコンパイルチェック
+
+PC拡張ホストは、スクリプトの実行とコンパイルだけのチェックを切り替えられます。
+
+```text
+script_extension.exe run script.yaj
+script_extension.exe run script.yaj 10
+script_extension.exe check script.yaj
+```
+
+`run`はスクリプトを実行します。末尾の秒数を指定すると自動停止します。
+`check`は`script_load()`によるコンパイルまで行い、成功しても`INIT`や`MAIN`へ入りません。
+エディタやCIから、副作用なしで構文・名前・型を検査できます。
+
+このチェック機能を利用するVS Code拡張は
+[`editors/vscode-yajir`](../../../editors/vscode-yajir)にあります。
 
 ## 設定
 
