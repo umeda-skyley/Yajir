@@ -28,6 +28,7 @@ const char *script_strerror(script_err_t code)
         case ERR_NO_IMPORT:      return "def_import not supported here (no import function registered)";
         case ERR_IMPORT_NOT_FOUND: return "library not found";
         case ERR_DUP_DEF:        return "duplicate port definition (name already defined, maybe by a library)";
+        case ERR_NO_FREE_SLOT:   return "no free slot (raise the matching CFG_* for the named resource)";
         case ERR_SYNTAX:         return "syntax error";
     }
     return "load error";
@@ -57,12 +58,14 @@ void host_diag_note(const char *n)
 static const char *const g_builtin_names[] = {
     "GVAR","VAR","ARG","RESULT","SVAR","SGVAR","SARG","SRESULT","STATUS",
     "NOW","STDOUT",   /* コア昇格したホスト注入点（v0.4.8）。綴り間違い候補もコア builtin 扱い */
+    "ARGC",           /* 受け取った引数の個数（v0.4.12） */
     "CODE_USED","STR_USED","VERSION",
     "SLICER","MERGER","COUNTER","FORMATTER","EQUALS","FINDER","STRTOL",
     "FIELD","UPPER","LOWER","TRIMMER","INVOKER","CHR","ASC",
     "ERR_QUEUE_OVF","ERR_TIMER_FULL","ERR_DIVZERO","ERR_STR_TRUNC",
     "ERR_BUDGET","ERR_DELAY_FULL",
     "WAIT","CLEAR_ERR","HANDLER","AFTER",
+    "T_INT","T_STR",   /* def_port / def_auto の型指定（v0.4.12） */
     NULL
 };
 

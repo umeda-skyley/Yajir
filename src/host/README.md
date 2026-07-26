@@ -81,7 +81,62 @@ for (;;) { poll_your_irq_sources(); script_tick(); }   /* while(1) 常駐 */
 `puts_fn` の中身は「渡された C 文字列をそのまま送信」だけ（例: `HAL_UART_Transmit` / `fputs`）。
 整形はコア側なので、ボードごとに書くのは送信の1行だけです。
 
-#### (c) 任意 — 周辺I/O（センサ・GPIO・アクチュエータ）
+#### (c) 任意 — ライブラリ取り込み `def_import`（v0.4.10）
+
+| 供給するもの | 束ね方 | 備考 |
+|---|---|---|
+| **ライブラリ取得** `int (*)(const char *name, const char **src, uint32_t *len)` | `script_register_import(fn)` | スクリプトの `def_import("名前")` が呼ぶ。**未登録＝そのプラットフォームは import 非対応**（`def_import` を含むスクリプトはロード時 `ERR_NO_IMPORT`） |
+
+`def_import` は**構文だけがコアにあり、ライブラリの所在はコアが決めません**。「名前 → 本文」を返す
+この関数1本をホストが供給します。だから所在の決め方はボードの都合で自由に選べます
+（ファイル `<名前>.yaj` ／ Flash 常駐の `const char[]` 表 ／ フラッシュFS ／ USBマスストレージ …）。
+参照実装は **PC＝ローカルファイル**、**STM32＝Flash 常駐表**（`stm32_l476/yajir_libs.h`）です。
+
+**IF規約**
+
+| 項目 | 規約 |
+|---|---|
+| 戻り値 | **`0`＝見つかった**（`*src` と `*len` を埋める）／**`<0`＝その名前は無い** → `ERR_IMPORT_NOT_FOUND` |
+| `*src` | 本文の先頭。**`0` を返すなら非NULL必須**（NULL は「無い」と同じ扱い） |
+| `*len` | 本文のバイト長。**これが正**で、**NUL終端は不要**（レキサは長さ基準で読む） |
+| **バッファ寿命** | **その `def_import` を解析し終わるまで**有効ならよい。コアは**原文を保持しません**（コード生成は追記のみ・文字列リテラルは解析時にプールへ複写済み） |
+| 同時に開く数 | **入れ子 import は禁止**なので、同時に開くライブラリは**常に1つ**。バッファは1本で足ります |
+| 呼ばれる回数 | 同じ名前の2回目以降は**コアが呼びません**（二重 import は冪等）。記憶できる本数は `CFG_MAX_IMPORTS` |
+| 呼ばれる時期 | **コンパイル中のみ**。`script_tick()` 実行中に呼ばれることはありません |
+
+この寿命規約が要です。**本文をポインタで返させる**ので、実機ではライブラリを Flash に置いたまま
+直接指せます＝**取り込みに RAM を1バイトも使いません**。RAM 上に読み込む方式でも、1本のバッファを
+使い回せます。
+
+```c
+/* Flash 常駐表から引くだけの最小実装（STM32 版の要点） */
+static const char LIB_BLINKER[] = "def_alias(BLINK_MS, GVAR[7])\n" /* …ライブラリ本文… */;
+static const struct { const char *name; const char *src; } LIBS[] = {
+    { "blinker", LIB_BLINKER },
+};
+static int my_import(const char *name, const char **src, uint32_t *len)
+{
+    int i;
+    for (i = 0; i < (int)(sizeof LIBS / sizeof LIBS[0]); i++)
+        if (strcmp(name, LIBS[i].name) == 0) {
+            *src = LIBS[i].src;                     /* Flash をそのまま指す（コピー不要） */
+            *len = (uint32_t)strlen(LIBS[i].src);
+            return 0;
+        }
+    return -1;                                      /* → ERR_IMPORT_NOT_FOUND */
+}
+...
+script_register_import(my_import);
+```
+
+> **切り詰めた本文を返さないこと。** 途中で切れた本文を `0` で返すと、コアはそれを正当なソースとして
+> コンパイルし、**実際とは無関係な構文エラー**（「`END` が無い」等）になります。バッファに収まらない
+> ときは `<0` を返して `ERR_IMPORT_NOT_FOUND` に倒すのが正解です（PC版はそうしています）。
+
+> ライブラリ内で失敗したときの行番号は、**そのライブラリ内の行**です。`script_last_error()->src_name`
+> が空ならスクリプト本体、非空ならそのライブラリ名を表します（表示例は 4 節）。
+
+#### (d) 任意 — 周辺I/O（センサ・GPIO・アクチュエータ）
 
 | 種別 | シグネチャ | 束ね方 | 例 |
 |---|---|---|---|
@@ -96,7 +151,7 @@ for (;;) { poll_your_irq_sources(); script_tick(); }   /* while(1) 常駐 */
 - 文字列Utility（`FORMATTER` 等）や数値Utility（`RAND` 等）、`STATUS`/`ERR_*` はコア組込み。
   ホストは登録不要（`script_init` が用意する）。
 
-#### (d) 任意 — 非同期イベント源（ISR/割り込みからVMへ橋渡し）
+#### (e) 任意 — 非同期イベント源（ISR/割り込みからVMへ橋渡し）
 
 イベント源（`ON <名前>` の相手）は `script_register_handler(name)` で名前だけ登録し、実際の発火は
 ISR/タスクから post 関数を呼ぶ。**post 系は ISR から呼べる**（積んで即 return・次tickで処理, §10）:
@@ -110,7 +165,7 @@ ISR/タスクから post 関数を呼ぶ。**post 系は ISR から呼べる**�
 void HAL_GPIO_EXTI_Callback(uint16_t pin){ if (pin==B1_Pin) script_post_msg("BTN", 0); }
 ```
 
-#### (e) 任意 — その他フック
+#### (f) 任意 — その他フック
 
 | 供給するもの | 束ね方 | 備考 |
 |---|---|---|
@@ -121,7 +176,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin){ if (pin==B1_Pin) script_post_msg("BTN
 > `host_diag_note()` も一緒に呼ぶ。既存グルーの冒頭がその形（`NOW`/`STDOUT` はコア昇格したので
 > 候補は `host_diag` の builtin 表側が持つ＝ホストからの note は不要, v0.4.8）。
 
-#### (f) 任意 — config / ISRガードマクロの上書きインクルード
+#### (g) 任意 — config / ISRガードマクロの上書きインクルード
 
 コアを一切編集せずにボード固有の値やクリティカルセクション実装を差し込む2つの継ぎ目。
 どちらも**コンパイル定義（`-D`）で指定**するだけで、`script_config.h` が自動で取り込みます。
@@ -138,7 +193,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin){ if (pin==B1_Pin) script_post_msg("BTN
   ホストはコスト0）。ISR＋self-post など**複数生産者**からイベントを post するボードは、
   `YJ_PORT_HEADER` 経由でヘッダごと差し込むか、ビルド前に直接 `#define` して割り込み禁止/復帰を
   実装すること（例は `stm32_l476/yajir_port_stm32.h` を参照。CMSIS/PRIMASK退避の実例）。
-- 検討タイミングの目安: 新ボードを足す際、まず「(a)〜(e) の register だけで済むか」を確認し、
+- 検討タイミングの目安: 新ボードを足す際、まず「(a)〜(f) の register だけで済むか」を確認し、
   RAM 上限やマルチ生産者な割り込み構成がある場合にのみ、この2つの上書きを検討する。
 
 ### 3. ローダ／メインループ（スクリプトの入手経路）
@@ -152,7 +207,23 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin){ if (pin==B1_Pin) script_post_msg("BTN
 `script_load` の非0戻り値は「事実＋判断材料」だけ（行・コード・トークン）。**文字列化・言語・
 表示は組み込む人の領域**（(B)方針）。`common/host_diag.c` の `script_strerror()`／`host_suggest_name()`
 がそのまま使えます（全ボード共通・純C）。`ERR_NO_CLOCK` なら「`script_register_now` の呼び忘れ」を
-すぐ指せます。
+すぐ指せます。ロードエラーの全種別と意味は [`docs/builtin_ports.md`](../../docs/builtin_ports.md) の
+「コンパイル（ロード）エラー一覧」にまとまっています。
+
+`def_import`（(c)節）を使うホストは、**エラーがどのソースの行か**も示してください。
+`script_error_t.src_name` が**空ならスクリプト本体**、**非空ならそのライブラリ内**の行番号です
+（v0.4.10）。PC 版の表示例:
+
+```c
+const script_error_t *e = script_last_error();
+if (e->src_name[0])                       /* ライブラリ内で失敗した */
+    fprintf(stderr, "load error: in library '%s' line %d: %s\n",
+            e->src_name, e->line, script_strerror(e->code));
+else
+    fprintf(stderr, "load error: line %d: %s\n", e->line, script_strerror(e->code));
+```
+
+これが無いと、ライブラリの12行目とスクリプト本体の12行目を取り違えます。
 
 ### まとめ：最小構成
 
@@ -166,4 +237,4 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin){ if (pin==B1_Pin) script_post_msg("BTN
   詳細は [`stm32_l476/README.md`](stm32_l476/README.md)。
 
 > 注意: `script_config.h` の `CFG_MAX_PORTS` は「組込みポート + そのボードが register する数」を
-> 賄える値にすること（既定 48）。超過すると register が**黙って失敗**します。
+> 賄える値にすること（既定 56）。超過すると register が**黙って失敗**します。

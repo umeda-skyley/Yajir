@@ -59,6 +59,21 @@ typedef struct {
 static alias_t s_aliases[CFG_MAX_ALIAS];
 static int     s_nalias;
 
+/* ---- def_auto（局所スロットの自動割り当て, v0.4.12） ----
+ * `def_auto(NAME[, T_INT|T_STR])` は def_local の「番号を人間が管理しない」版。名前は宣言必須
+ * （＝打ち間違いは従来どおりロード時エラー・did-you-mean も生きる）で、スロット番号だけ自動。
+ * 手動 def_local の実害——(a) 変数を足すたびの番号振り直し (b) 同じ VAR[0] を2つの名前へ割り当てても
+ * 検出されない——が構造的に消える。
+ *
+ * 割り当ては**高位から降順**（VAR[CFG_VAR_COUNT-1] → 下）。生の VAR[k] は低位から使う慣習なので
+ * 正面衝突しにくい。これは def_import ライブラリのスロット規約（高位から降順）と同じ1本の規則。
+ * ※ 別名は「名前」を予約するが「添字」は予約しないので、生 VAR[k] との衝突は規約で避ける
+ *   （完全検出はブロック内の生使用を全部集める2パスが必要＝ワンパス原則を壊すので採らない）。
+ *
+ * カウンタはブロック単位（def_local と同じ high-water-mark 寿命）。兄弟ブロックは同じ枠を再利用する。 */
+static int s_auto_var;    /* このブロックで自動割り当て済みの VAR 本数 */
+static int s_auto_svar;   /* 同・SVAR 本数 */
+
 /* ---- スクリプト内ポート（def_port）の呼び出しグラフ（§3, v0.4.5） ----
  * コンパイル時のみの揮発状態。sidx（0..s_nscript_ports-1）を圧縮索引に使い、辺はビットセット
  * （callee sidx のビット）で持つ。ロード末尾に DFS でサイクル検出＋最長路（最大コールスタック段数）。 */
@@ -648,7 +663,7 @@ static void parse_stmt(void)
     int argc, pi;
 
     /* def_local はブロック冒頭一括のみ（文の後は不可, §3 v0.4.6）。ここに来た＝文の位置なので構文エラー。 */
-    if (is_kw("def_local")) fail(line, ERR_SYNTAX);
+    if (is_kw("def_local") || is_kw("def_auto")) fail(line, ERR_SYNTAX);
 
     /* 単独 EXIT: 「戻り型のデフォルト値を返して抜ける」略記（§7 v0.4.5・後方互換）。
      * ハンドラ/T_INTポートは 0->EXIT、T_STRポートは ""->EXIT と同義＝END到達フォールスルーと同一。
@@ -850,7 +865,7 @@ static void parse_stmt_list(void)
 /* INIT / MAIN */
 static void parse_simple_block(block_kind_t kind)
 {
-    int bi, amark;
+    int bi, amark, avmark, asmark;
     expect_newline();           /* ヘッダ行終端 */
     bi = add_block(kind);
     P.yield_ok = (kind == BLK_MAIN || kind == BLK_INIT);  /* WAITはMAIN/INITで可（v0.3.4） */
@@ -858,12 +873,15 @@ static void parse_simple_block(block_kind_t kind)
     P.repeat_depth = 0;
     P.cur_port_type = -1; P.cur_port_sidx = -1;   /* スクリプト内ポート本体ではない（v0.4.5） */
     amark = s_nalias;           /* ローカル別名スコープ入口（v0.4.6） */
+    avmark = s_auto_var; asmark = s_auto_svar;   /* 自動割り当てカウンタも退避（v0.4.12） */
+    s_auto_var = 0; s_auto_svar = 0;
     parse_local_decls();        /* 冒頭一括の def_local */
     parse_stmt_list();
     if (!is_kw("END")) fail_end(P.cur.line, P.open_line);  /* aux=このブロックの開きヘッダ行 */
     adv();
     emit8(OP_HALT);
     s_nalias = amark;           /* ブロック局所別名を捨てる（END まで, v0.4.6） */
+    s_auto_var = avmark; s_auto_svar = asmark;   /* 自動割り当て枠も解放（v0.4.12） */
     if (kind == BLK_INIT) vm()->init_blk = bi;
     else                  vm()->main_blk = bi;
     expect_newline();
@@ -916,7 +934,7 @@ static void parse_on_block(void)
     expect_newline();
     {
         int bi = add_block(kind);   /* bc_start = here() ＝ 条件チャンクの直後 */
-        int amark;
+        int amark, avmark, asmark;
         vm()->blocks[bi].period   = period;
         vm()->blocks[bi].handler_port = handler;
         if (cond_start >= 0) vm()->blocks[bi].cond_start = (uint16_t)cond_start;  /* 条件トリガ（v0.4.7） */
@@ -925,12 +943,15 @@ static void parse_on_block(void)
         P.repeat_depth = 0;
         P.cur_port_type = -1; P.cur_port_sidx = -1;   /* ハンドラ本体（スクリプト内ポートではない, v0.4.5） */
         amark = s_nalias;           /* ローカル別名スコープ入口（v0.4.6） */
+        avmark = s_auto_var; asmark = s_auto_svar;   /* 自動割り当てカウンタも退避（v0.4.12） */
+        s_auto_var = 0; s_auto_svar = 0;
         parse_local_decls();
         parse_stmt_list();
         if (!is_kw("END")) fail_end(P.cur.line, P.open_line);  /* aux=ONの開きヘッダ行 */
         adv();
         emit8(OP_HALT);
         s_nalias = amark;           /* ブロック局所別名を捨てる（v0.4.6） */
+        s_auto_var = avmark; s_auto_svar = asmark;   /* 自動割り当て枠も解放（v0.4.12） */
     }
     expect_newline();
 }
@@ -957,7 +978,7 @@ static void parse_def_alias(void)
     if (is_reserved_name(name) || vm_find_port(name) >= 0 || alias_find(name))
         fail_tok(line, ERR_SYNTAX, name);   /* 予約語/既登録ポート・定数/重複と衝突 */
     expect(T_COMMA, "','");
-    if (s_nalias >= CFG_MAX_ALIAS) fail(line, ERR_SYNTAX);   /* 表が満杯（資源限界） */
+    if (s_nalias >= CFG_MAX_ALIAS) fail_tok(line, ERR_NO_FREE_SLOT, "ALIAS");   /* 別名表が満杯（v0.4.12） */
     al = &s_aliases[s_nalias];
     strncpy(al->name, name, CFG_MAX_NAME - 1); al->name[CFG_MAX_NAME - 1] = '\0';
     if      (P.cur.type == T_NUMBER) { al->kind = AL_INT; al->v = P.cur.num;     adv(); }
@@ -988,7 +1009,7 @@ static void parse_def_local(void)
     if (is_reserved_name(name) || vm_find_port(name) >= 0 || alias_find(name))
         fail_tok(line, ERR_SYNTAX, name);
     expect(T_COMMA, "','");
-    if (s_nalias >= CFG_MAX_ALIAS) fail(line, ERR_SYNTAX);   /* 表が満杯 */
+    if (s_nalias >= CFG_MAX_ALIAS) fail_tok(line, ERR_NO_FREE_SLOT, "ALIAS");   /* 別名表が満杯（v0.4.12） */
     al = &s_aliases[s_nalias];
     strncpy(al->name, name, CFG_MAX_NAME - 1); al->name[CFG_MAX_NAME - 1] = '\0';
     if      (P.cur.type == T_NUMBER) { al->kind = AL_INT;  al->v = P.cur.num;     adv(); }
@@ -1003,13 +1024,60 @@ static void parse_def_local(void)
     expect_newline();
 }
 
-/* ブロック冒頭の def_local 宣言列を消費（本体の最初の文より前・一括, v0.4.6）。 */
+/* def_auto(NAME [, T_INT|T_STR]) を解析して局所スロットを1本自動割り当てる（v0.4.12）。
+ * def_local との違いは「実体を書かない＝番号をコンパイラが選ぶ」ことだけ。名前は宣言必須なので
+ * 打ち間違いは従来どおり未知名エラーになる（暗黙宣言＝宣言なしで使えるようにする案は、タイプミスが
+ * 黙って新変数になり「ミスを実行時に持ち越さない」§0 に反するため採らない）。
+ * 型は T_INT→VAR / T_STR→SVAR（省略時 T_INT）。def_port の綴りに合わせて語彙を一貫させる。
+ * 局所専用（GVAR/SGVAR は対象外）——大域は def_import でライブラリと共有するため、自動化すると
+ * 「ライブラリが何番を取ったか」がアプリから見えなくなる。 */
+static void parse_def_auto(void)
+{
+    char name[CFG_MAX_NAME];
+    int line = P.cur.line, is_str = 0, idx;
+    alias_t *al;
+    adv();                                  /* "def_auto" を消費 */
+    expect(T_LPAREN, "'('");
+    if (P.cur.type != T_IDENT) fail(P.cur.line, ERR_SYNTAX);
+    strncpy(name, P.cur.text, CFG_MAX_NAME - 1); name[CFG_MAX_NAME - 1] = '\0';
+    adv();
+    /* 衝突判定は def_local と同じ（予約語・スロット名・登録ポート・既存エイリアス） */
+    if (is_reserved_name(name) || vm_find_port(name) >= 0 || alias_find(name))
+        fail_tok(line, ERR_SYNTAX, name);
+    if (P.cur.type == T_COMMA) {            /* 型指定は任意（省略時 T_INT） */
+        adv();
+        if      (is_kw("T_INT")) is_str = 0;
+        else if (is_kw("T_STR")) is_str = 1;
+        else fail(P.cur.line, ERR_SYNTAX);  /* 実体は書かない＝ def_auto は型のみ受ける */
+        adv();
+    }
+    expect(T_RPAREN, "')'");
+    expect_newline();
+
+    if (s_nalias >= CFG_MAX_ALIAS) fail_tok(line, ERR_NO_FREE_SLOT, "ALIAS");   /* 別名表が満杯 */
+    /* 高位から降順に確保。枯れたらこの宣言行でロードエラー（tok で上げるべき CFG_* が分かる）。 */
+    if (is_str) {
+        if (s_auto_svar >= CFG_SVAR_COUNT) fail_tok(line, ERR_NO_FREE_SLOT, "SVAR");
+        idx = CFG_SVAR_COUNT - 1 - s_auto_svar++;
+    } else {
+        if (s_auto_var  >= CFG_VAR_COUNT)  fail_tok(line, ERR_NO_FREE_SLOT, "VAR");
+        idx = CFG_VAR_COUNT  - 1 - s_auto_var++;
+    }
+    al = &s_aliases[s_nalias];
+    strncpy(al->name, name, CFG_MAX_NAME - 1); al->name[CFG_MAX_NAME - 1] = '\0';
+    al->kind = is_str ? AL_SVAR : AL_VAR;
+    al->v    = idx;
+    s_nalias++;
+}
+
+/* ブロック冒頭の def_local / def_auto 宣言列を消費（本体の最初の文より前・一括, v0.4.6/v0.4.12）。 */
 static void parse_local_decls(void)
 {
     for (;;) {
         skip_newlines();
-        if (!is_kw("def_local")) return;
-        parse_def_local();
+        if      (is_kw("def_local")) parse_def_local();
+        else if (is_kw("def_auto"))  parse_def_auto();   /* スロット自動割り当て（v0.4.12） */
+        else return;
     }
 }
 
@@ -1084,7 +1152,7 @@ static void parse_def_port(void)
 static void parse_port_block(void)
 {
     char name[CFG_MAX_NAME];
-    int line = P.open_line, pi, sidx, amark;
+    int line = P.open_line, pi, sidx, amark, avmark, asmark;
     if (P.cur.type != T_IDENT) fail(P.cur.line, ERR_SYNTAX);
     strncpy(name, P.cur.text, CFG_MAX_NAME - 1); name[CFG_MAX_NAME - 1] = '\0';
     adv();
@@ -1100,12 +1168,15 @@ static void parse_port_block(void)
     P.cur_port_type = (vm()->ports[pi].out_type == SCRIPT_T_STR) ? TY_STR : TY_INT;
     P.cur_port_sidx = sidx;
     amark = s_nalias;           /* ローカル別名スコープ入口（v0.4.6） */
+    avmark = s_auto_var; asmark = s_auto_svar;   /* 自動割り当てカウンタも退避（v0.4.12） */
+    s_auto_var = 0; s_auto_svar = 0;
     parse_local_decls();
     parse_stmt_list();
     if (!is_kw("END")) fail_end(P.cur.line, P.open_line);
     adv();
     emit_exit_default(P.cur_port_type);   /* EXIT されず END 到達＝既定値(0/空)を産出して return */
     s_nalias = amark;           /* ブロック局所別名を捨てる（v0.4.6） */
+    s_auto_var = avmark; s_auto_svar = asmark;   /* 自動割り当て枠も解放（v0.4.12） */
     P.cur_port_type = -1;
     P.cur_port_sidx = -1;
     expect_newline();
@@ -1148,6 +1219,7 @@ static void reset_program(void)
     memset(m->var,  0, sizeof(m->var));
     memset(m->arg,  0, sizeof(m->arg));
     memset(m->sarg, 0, sizeof(m->sarg));
+    m->argc_cur = 0;   /* ARGC（受け取った位置数）もロードごとにクリア（v0.4.12） */
     m->result = val_int(0);
     memset(m->sgvar, 0, sizeof(m->sgvar));   /* 文字列スロットは空文字でクリア（§4） */
     memset(m->svar,  0, sizeof(m->svar));
@@ -1173,6 +1245,7 @@ static void reset_program(void)
     m->timer_overflow = false;
     memset(m->delay, 0, sizeof(m->delay));   /* 遅延post の pending 表（§10, v0.4.7） */
     s_nalias = 0;   /* エイリアス表もロードごとにクリア（v0.3.8） */
+    s_auto_var = 0; s_auto_svar = 0;   /* def_auto の割り当てカウンタ（v0.4.12） */
     /* def_import の取り込み状態もロードごとに初期化（§13, v0.4.10） */
     s_in_import = 0;
     s_src_name[0] = '\0';
@@ -1256,7 +1329,8 @@ static void parse_top_level_unit(void)
     if (is_kw("def_alias"))   { parse_def_alias();   return; }   /* コンパイラが解釈する def_（v0.3.8） */
     if (is_kw("def_handler")) { parse_def_handler(); return; }   /* 同上・ハンドラ源宣言（v0.4.1） */
     if (is_kw("def_port"))    { parse_def_port();    return; }   /* 同上・スクリプト内ポート宣言（v0.4.5） */
-    if (is_kw("def_local"))   fail(P.cur.line, ERR_SYNTAX);      /* def_local はブロック冒頭のみ（ファイル冒頭不可, v0.4.6） */
+    if (is_kw("def_local") || is_kw("def_auto"))
+        fail(P.cur.line, ERR_SYNTAX);      /* def_local/def_auto はブロック冒頭のみ（ファイル冒頭不可, v0.4.6/v0.4.12） */
     if (!strncmp(P.cur.text, "def_", 4)) { skip_def_line(); return; }  /* 他の def_ は非解釈（写し） */
 
     /* INIT/MAIN はライブラリに書けない（§13, v0.4.10）。MAIN は1本きり、INIT は複数ブロックの

@@ -183,12 +183,16 @@ static int find_handler_block(int handler_port)
     return -1;
 }
 
-/* ---- ハンドラ実行（最後まで走り切る, §7） ---- */
-static void run_handler(int bi)
+/* ---- ハンドラ実行（最後まで走り切る, §7） ----
+ * argc = このブロックが受け取った位置の個数（入力ポート ARGC の値, v0.4.12）。
+ * イベント経路は ev->npos、引数を持たない周期ON等は 0。**引数にしてあるのは呼び出し側で
+ * 決め忘れを構造的に防ぐため**（fill_args はイベント経路でしか呼ばれない）。 */
+static void run_handler(int bi, int argc)
 {
     uint16_t pc = vm()->blocks[bi].bc_start;
     int budget = CFG_INSTR_BUDGET;     /* ハンドラ毎のバジェット（§1） */
     int32_t ms = 0;
+    vm()->argc_cur = argc;
     vm()->sp = 0;
     vm()->loop_sp = 0;   /* ループフレームは block ごとにリセット（EXIT/エラーの途中脱出保険, v0.4.4） */
     vm()->call_sp = 0;   /* コールフレームも block ごとにリセット（within-tick 保険, v0.4.5） */
@@ -206,6 +210,7 @@ static int eval_cond(const block_t *b)
     int budget = CFG_INSTR_BUDGET;
     int32_t ms = 0;
     int r;
+    m->argc_cur = 0;   /* 条件式も引数を持たない文脈（v0.4.12） */
     m->sp = 0; m->loop_sp = 0; m->call_sp = 0;
     vm_exec(&pc, &budget, &ms, /*in_main=*/false);
     r = (m->sp > 0) ? val_truthy(m->stack[0]) : 0;   /* 評価できなければ偽に縮退 */
@@ -243,6 +248,7 @@ static void advance_main(int32_t now)
         if (now < c->wake_time) return;   /* まだ待ち */
         c->waiting = false;               /* 起床。pcはWAITの次を指している */
     }
+    m->argc_cur = 0;   /* MAIN は引数を受け取らない＝ARGC 0（v0.4.12） */
     m->sp = 0;   /* MAINは文境界(=WAIT)でyieldするのでスタックは空 */
     m->loop_sp = 0;   /* REPEAT は within-tick で完結（WAITまたぎ不可）ゆえ常に0（保険, v0.4.4） */
     m->call_sp = 0;   /* スクリプト内ポート呼びも within-tick で完結（保険, v0.4.5） */
@@ -314,6 +320,7 @@ static void advance_init(int32_t now)
         if (now < c->wake_time) return;   /* INIT WAIT中：世界は凍結のまま */
         c->waiting = false;
     }
+    m->argc_cur = 0;  /* INIT は引数を受け取らない＝ARGC 0（v0.4.12） */
     m->sp = 0;
     m->loop_sp = 0;   /* v0.4.4 */
     m->call_sp = 0;   /* v0.4.5 */
@@ -385,7 +392,7 @@ void sched_tick(void)
                 case EVT_HANDLER:     bi = find_handler_block(ev.handler_port); break;   /* HANDLER含む名前付きハンドラ */
                 case EVT_TIMER:   bi = find_block_kind(BLK_ON_TIMER); break;
             }
-            if (bi >= 0) { fill_args(&ev); run_handler(bi); }
+            if (bi >= 0) { fill_args(&ev); run_handler(bi, ev.npos); }   /* ARGC=受け取った位置数 */
             /* 対応ブロックが無いイベントは捨てる */
         }
     }
@@ -411,12 +418,12 @@ void sched_tick(void)
              * 再評価は発火したときだけ＝エッジは稀なのでコストは無視できる。 */
             int cond = eval_cond(b);
             if (cond && !b->prev) {
-                run_handler(i);
+                run_handler(i, 0);          /* 周期ONは引数を受け取らない＝ARGC 0 */
                 cond = eval_cond(b);   /* 本体が条件を落としたかを見る（落ちていれば即再武装） */
             }
             b->prev = (bool)cond;
         } else {
-            run_handler(i);                         /* 1 tick につき1回は必ず発火 */
+            run_handler(i, 0);                      /* 1 tick につき1回は必ず発火（ARGC 0） */
         }
         if (b->period <= 0) {
             b->next_time = now + 1;                 /* 0周期の退避（無限ループ防止） */

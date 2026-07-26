@@ -90,6 +90,7 @@ typedef struct {
  * CFG_CALL_NEST を実際の最大呼び出し深度（ロード時DFSで検算済）まで絞るとRAMを直接削れる。 */
 typedef struct {
     uint16_t ret_pc;                            /* 呼び出し元の再開オフセット */
+    int      save_argc;                         /* caller の ARGC（受け取った位置数, v0.4.12） */
     value_t  save_arg[CFG_ARG_COUNT];           /* caller ARG[] の退避（受信引数） */
     char     save_sarg[CFG_SARG_COUNT][CFG_SARG_LEN]; /* caller SARG[] の退避 */
     value_t  save_var[CFG_VAR_COUNT];           /* caller VAR[] の退避（v0.4.6 private ローカル化） */
@@ -138,6 +139,11 @@ typedef struct {
     value_t var[CFG_VAR_COUNT];
     value_t arg[CFG_ARG_COUNT];                 /* ARG[k]：int/char ビュー（§10） */
     char    sarg[CFG_SARG_COUNT][CFG_SARG_LEN]; /* SARG[k]：str ビュー（受信専用, v0.3.5） */
+    /* 実行中のブロック/ポートが受け取った「位置の個数」＝入力ポート ARGC の実体（§10, v0.4.12）。
+     * これで受け側が `none`（0個）と `0`（1個・値0）を区別できる（ARG[k] は不足を benign 0 で
+     * 返すため両者が同じに見えていた）。引数を受け取らないブロック（INIT/MAIN/周期ON/ON TIMER）は 0。
+     * PORT 呼び出しでは call_frame_t に退避・復帰する（ARG/SARG と同じ private 扱い）。 */
+    int     argc_cur;
     value_t result;
 
     /* 文字列スロット（§4 文字列スロット・案A）。固定長バッファ。 */
