@@ -44,6 +44,7 @@ SRESULT -> SGVAR[0]     # → "ABC"
 |ポート|産出|説明|例|
 |-|-|-|-|
 |`STATUS`|int|直近のエラー状態ビット（`ERR_*` の OR）|`STATUS -> GVAR[0]`|
+|`ARGC`|int|**いま実行中のブロックが受け取った引数の個数**（v0.4.12・下記）|`ARGC -> GVAR[0]`|
 |`CODE_USED`|int|ロード中スクリプトのバイトコード使用量（バイト）|`CODE_USED -> GVAR[0]`|
 |`STR_USED`|int|文字列定数プールの使用量（バイト）|`STR_USED -> GVAR[0]`|
 |`VERSION`|str|言語バージョン文字列|`VERSION -> SGVAR[0]`|
@@ -55,6 +56,38 @@ VERSION    -> STDOUT          # → 0.4.2
 "code: ", CODE_USED -> STDOUT
 "str:  ", STR_USED  -> STDOUT
 ```
+
+### `ARGC` ── 引数の個数を知る（v0.4.12）
+
+`none -> HANDLER`（引数なし）と `0 -> HANDLER`（引数1個・値0）は**別物**ですが、`ARG[k]` は
+渡されなかった位置を `0` で返すため、受け側からは同じに見えていました。`ARGC` はその区別を可能にします。
+
+```
+def_handler(CMD)
+
+ON CMD
+    (ARGC == 0) -> IFYES
+        "呼ばれただけ" -> STDOUT       # none -> CMD
+        EXIT
+    END
+    "引数 ", ARGC, " 個・先頭=", ARG[0] -> STDOUT
+END
+```
+
+- **引数を受け取らないブロックでは `0`** です（`INIT` / `MAIN` / `ON <ms>` 周期 / `ON TIMER` / 条件式）。
+- **`PORT`（サブルーチン）の中では「そのポートが受け取った個数」**になり、戻ると呼び出し元の値へ復帰します
+  （`ARG` / `VAR` と同じ private 扱い）。
+
+```
+def_port(SUB, T_INT)
+
+PORT SUB
+    ARGC -> EXIT              # 1, 2, 3 -> SUB なら 3
+END
+```
+
+> 数えるのは**位置の個数**です。各位置が数値か文字列かは、従来どおり `ARG[k]` / `SARG[k]` の
+> 使い分けで判断してください。
 
 ### エラー定数
 
@@ -330,6 +363,56 @@ END
 > `def_alias` = 大域（`GVAR`/`SGVAR`/リテラル・ファイル冒頭）、`def_local` = 局所
 > （`VAR`/`SVAR`/`ARG`/`SARG`/リテラル・ブロック冒頭）。対象がきれいに分かれています。
 
+## 作業用スロットの自動確保 `def_auto`（v0.4.12）
+
+`def_local` は「どのスロットを使うか」を自分で書きます（`def_local(TMP, VAR[0])`）。
+**番号の管理が面倒なとき**は `def_auto` を使うと、空いているスロットをコンパイラが選んでくれます。
+
+```
+ON RXDATA
+    def_auto(LINE, T_STR)      # 空いている SVAR を1本
+    def_auto(TOKEN, T_STR)
+    def_auto(N)                # 空いている VAR を1本（型を省略すると T_INT）
+
+    SARG[0] -> LINE
+    ARG[1]  -> N
+    LINE, " ", 2 -> FIELD -> TOKEN
+    "field2=", TOKEN, " n=", N -> STDOUT
+END
+```
+
+- **型**: `T_INT` → `VAR`、`T_STR` → `SVAR`。**省略時は `T_INT`**
+- **名前の宣言は必要です**（`def_auto(N)` と書く）。宣言なしで新しい名前を使うことはできません
+  ── 打ち間違いが黙って別の変数になるのを防ぐためです
+- **ブロック局所**（`def_local` と同じ）。`END` まで有効で、別のブロックでは同じ名前を使い回せます
+- 宣言位置も `def_local` と同じ **ブロックの冒頭に一括**
+- `def_local` と混ぜて書けます
+
+### 手で番号を書く場合との違い
+
+`def_local` で同じ番号を2つの名前に割り当てても**エラーになりません**（黙って共有されます）。
+`def_auto` なら**構造的に起こりません**。変数を1本足すときに番号を振り直す手間もありません。
+
+```
+def_local(A, VAR[0])
+def_local(B, VAR[0])       # ← 気づきにくい。A と B が同じ入れ物になる
+```
+
+### スロットが足りないとき
+
+**その `def_auto` の行でロードエラー**になります（実行時ではありません）。
+
+```
+load error: line 12: no free slot (raise the matching CFG_* for the named resource) 'VAR'
+```
+
+`'VAR'` の部分が枯れた資源です。`VAR` なら `CFG_VAR_COUNT`、`SVAR` なら `CFG_SVAR_COUNT` を
+[`src/core/script_config.h`](../src/core/script_config.h) で増やしてください。
+
+> **生の `VAR[k]` と混ぜるときの注意**: `def_auto` は**上の番号から順に**確保します
+> （`VAR[7]`, `VAR[6]`, …）。自分で `VAR[0]`, `VAR[1]` … と**下から**使うようにすれば、
+> ぶつかりません。`def_import` のライブラリが大域スロットを上から取るのと同じ約束です。
+
 ## ライブラリの取り込み `def_import`（v0.4.10）
 
 共通処理（機器ドライバ相当・プロトコル処理・定型の状態機械）を**別のスクリプトに切り出して使い回す**ための宣言です。
@@ -588,10 +671,11 @@ load error: in library 'blinker' line 8: type mismatch (int/string slot)
 |`ERR_NO_IMPORT`|`def_import` が使えない環境|ホストが取り込み関数を用意していないプラットフォーム（v0.4.10）|ライブラリ名|
 |`ERR_IMPORT_NOT_FOUND`|ライブラリが見つからない|`def_import("名前")` の名前が存在しない（v0.4.10）|ライブラリ名|
 |`ERR_DUP_DEF`|スクリプト内ポートの二重定義|`def_port` の再宣言／`PORT` 本体の二重定義／既登録名との衝突（v0.4.11）。**ライブラリと本体で同名を定義**したときに出やすい|名前|
+|`ERR_NO_FREE_SLOT`|コンパイル時の資源が枯れた|`def_auto` のスロット枯渇／別名表（`def_alias`・`def_local`）満杯（v0.4.12）。**`tok` が枯れた資源名**（`VAR`/`SVAR`/`ALIAS`）＝上げるべき `CFG_*` が分かる|資源名|
 |`ERR_SYNTAX`|上記に当てはまらない構文崩れ|受け皿。トークンの並び違反・宣言位置違反（`def_alias` を冒頭以外に置く等）・`def_import` の位置違反 など|—|
 
 > **`did you mean`**: `ERR_UNKNOWN_PORT` / `ERR_UNKNOWN_NAME` のとき、参照実装は登録済みの名前と綴りを照合して**最も近い候補を1つ提案**します（`LDE1` → `LED1` など）。これはホスト側の親切機能で、コアの一部ではありません。
 
 ---
 
-最終更新: Yajir v0.4.11 時点の組み込みポート。
+最終更新: Yajir v0.4.12 時点の組み込みポート。

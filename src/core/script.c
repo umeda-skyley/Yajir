@@ -85,6 +85,11 @@ static void th_invoker(int argc, const script_value_t *a)
 }
 
 /* ロード済みスクリプトの資源使用量＋バージョン（読み取り用の組込み入力ポート, v0.4）。 */
+/* ARGC: いま実行中のブロック/ポートが受け取った「位置の個数」（§10, v0.4.12）。
+ * これで受け側が `none`（0個）と `0`（1個・値0）を区別できる——`ARG[k]` は不足位置を benign 0 で
+ * 返すため、従来スクリプトからは両者が同じに見えていた（C の out ポートは argc で区別できていた）。
+ * 引数を受け取らない文脈（INIT/MAIN/周期ON/ON TIMER/条件式）では 0。 */
+static int32_t argc_get(void) { return (int32_t)vm()->argc_cur; }
 static int32_t code_used_get(void) { return (int32_t)vm()->code_len; }     /* バイトコード使用バイト数 */
 static int32_t str_used_get (void) { return (int32_t)vm()->strpool_len; }  /* 文字列定数プール使用バイト数 */
 static int32_t version_get  (void) { script_set_sresult(SCRIPT_VERSION); return 0; }  /* str産出→SRESULT（M3経路） */
@@ -96,6 +101,7 @@ const char *script_version(void) { return SCRIPT_VERSION; }
 static void register_builtins(void)
 {
     script_register_in("STATUS", status_port_get, SCRIPT_T_INT);   /* (STATUS & ERR_x) -> IFYES */
+    script_register_in("ARGC", argc_get, SCRIPT_T_INT);            /* 受け取った引数の個数（§10, v0.4.12） */
     script_register_in("CODE_USED", code_used_get, SCRIPT_T_INT);  /* バイトコード使用量（§12, v0.4） */
     script_register_in("STR_USED",  str_used_get,  SCRIPT_T_INT);  /* 文字列プール使用量（v0.4） */
     script_register_in("VERSION",   version_get,   SCRIPT_T_STR);  /* バージョン文字列（v0.4） */

@@ -166,6 +166,7 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
                 memcpy(m->sarg, f->save_sarg, sizeof(m->sarg));
                 memcpy(m->var,  f->save_var,  sizeof(m->var));   /* VAR/SVAR も復帰（private, v0.4.6） */
                 memcpy(m->svar, f->save_svar, sizeof(m->svar));
+                m->argc_cur = f->save_argc;   /* ARGC も caller の値へ復帰（v0.4.12） */
                 p = f->ret_pc;
                 break;
             }
@@ -491,6 +492,7 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
             /* caller の ARG/SARG/VAR/SVAR を退避（全て private ローカル・v0.4.6）。共有は GVAR/SGVAR のみ。 */
             f = &m->callstack[m->call_sp++];
             f->ret_pc = p;
+            f->save_argc = m->argc_cur;   /* ARGC も private（呼び先の個数に切り替える, v0.4.12） */
             memcpy(f->save_arg,  m->arg,  sizeof(m->arg));
             memcpy(f->save_sarg, m->sarg, sizeof(m->sarg));
             memcpy(f->save_var,  m->var,  sizeof(m->var));
@@ -500,6 +502,8 @@ exec_status_t vm_exec(uint16_t *pc, int *budget, int32_t *out_ms, bool in_main)
             for (k = 0; k < CFG_SARG_COUNT; k++) m->sarg[k][0] = '\0';
             for (k = 0; k < CFG_VAR_COUNT; k++)  m->var[k] = val_int(0);
             for (k = 0; k < CFG_SVAR_COUNT; k++) m->svar[k][0] = '\0';
+            /* 呼び先が受け取った位置数（過多は切り捨て＝ARG に入った数と一致させる, §5） */
+            m->argc_cur = (argc > CFG_ARG_COUNT) ? CFG_ARG_COUNT : argc;
             for (k = 0; k < argc && k < CFG_ARG_COUNT; k++) {
                 value_t v = m->stack[base + k];
                 if (val_is_str(v)) {                         /* str 位置 → SARG[k]（int ビューは 0 のまま） */
