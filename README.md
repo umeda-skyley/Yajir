@@ -1,5 +1,19 @@
 # Yajir（ヤジール）
 
+> [!IMPORTANT]
+> **このブランチ（`codex/platform-hosts-pc-pico2w`）の開発は終了しました。**
+>
+> このブランチで開発してきたプラットフォーム移植、PC拡張、VS Code拡張は、
+> 次の独立リポジトリへ移行しました。
+>
+> - ボード移植、ライブラリ、サンプル: [Yajir-Boards](https://github.com/umeda-skyley/Yajir-Boards)
+> - Windows PC向けHTTP・AI・ファイルI/O拡張: [Yajir-PC-Extension](https://github.com/umeda-skyley/Yajir-PC-Extension)
+> - VS Code拡張: [vscode-yajir](https://github.com/umeda-skyley/vscode-yajir)
+>
+> 新規開発、Issue、Pull Requestは各移行先で行ってください。このブランチは
+> 分離前の統合状態を参照できるアーカイブとして残します。
+> Yajir Coreと標準ホストの開発は、引き続き本リポジトリの`main`で行われます。
+
 **超小型MCU向けの、小さな組み込みスクリプト言語**のリファレンス実装（純C）。名前の由来は構文の矢印（やじるし）`->`。
 
 ```
