@@ -10,7 +10,6 @@ void yajir_glue_stop(void);
 void host_register_all(void);
 
 int32_t get_tick(void);
-int32_t get_vmsize(void);
 void yajir_putc(char c);
 void yajir_puts(const char *s);
 

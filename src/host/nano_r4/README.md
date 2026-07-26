@@ -149,7 +149,6 @@ def_import("blinker")
 | `GPIO_TOGGLE` | `pin -> GPIO_TOGGLE` | 出力を反転し、新しい値を返す |
 | `GPIO_IRQ_ENABLE` | `pin, mask -> GPIO_IRQ_ENABLE` | GPIO IRQ条件を設定。`mask=0`で無効化 |
 | `GPIO_IRQ_DISABLE` | `pin -> GPIO_IRQ_DISABLE` | 指定ピンのGPIO IRQを無効化 |
-| `VMSIZE` | `VMSIZE` | Nano R4プロファイルのVMアリーナサイズ |
 | `ON USB_SERIAL` | ハンドラ | USBから受け取った1バイトを`ARG[0]`へ渡す |
 | `ON GPIO_IRQ` | ハンドラ | GPIO IRQのpin、edge、valueを受信 |
 

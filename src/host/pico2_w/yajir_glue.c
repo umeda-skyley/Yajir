@@ -13,7 +13,6 @@
 
 #include "host_diag.h"
 #include "script.h"
-#include "vm.h"
 #include "yajir_drive.h"
 #include "yajir_glue.h"
 #include "yajir_usb.h"
@@ -72,11 +71,6 @@ void yajir_puts(const char *s)
 int32_t get_tick(void)
 {
     return (int32_t)to_ms_since_boot(get_absolute_time());
-}
-
-int32_t get_vmsize(void)
-{
-    return (int32_t)sizeof(script_vm_t);
 }
 
 static void reg_out(const char *name, script_out_fn fn)
@@ -685,7 +679,6 @@ void host_register_all(void)
 
     reg_inout("LED1", led1_get, led1_set, SCRIPT_T_INT);
     script_register_now(get_tick);
-    reg_in("VMSIZE", get_vmsize, SCRIPT_T_INT);
     reg_inout("GPIO_GET", NULL, th_gpio_get, SCRIPT_T_INT);
     reg_inout("GPIO_SET", NULL, th_gpio_set, SCRIPT_T_INT);
     reg_out("GPIO_MODE", th_gpio_mode);

@@ -8,7 +8,6 @@ extern FspTimer *__get_timer_for_channel(int channel);
 
 extern "C" {
 #include "script.h"
-#include "vm.h"
 #include "host_diag.h"
 }
 
@@ -67,11 +66,6 @@ extern "C" void yajir_puts(const char *s)
 extern "C" int32_t get_tick(void)
 {
     return (int32_t)millis();
-}
-
-extern "C" int32_t get_vmsize(void)
-{
-    return (int32_t)sizeof(script_vm_t);
 }
 
 static void reg_out(const char *name, script_out_fn fn)
@@ -448,7 +442,6 @@ extern "C" void host_register_all(void)
     reg_out("RGB_LED", th_rgb_led);
     reg_out("RGB_PWM", th_rgb_pwm);
     script_register_now(get_tick);
-    reg_in("VMSIZE", get_vmsize);
     reg_inout("ADC_GET", NULL, th_adc_get);
     reg_inout("ADC_PIN", NULL, th_adc_pin);
     reg_inout("PWM_SET", NULL, th_pwm_set);

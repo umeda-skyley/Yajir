@@ -154,7 +154,6 @@ Paste a script, then enter @run on its own line.
 | `NOW` | `NOW` | 起動後の経過時間をミリ秒で取得 |
 | `DELAY` | `ms -> DELAY` | 指定時間だけホスト処理をブロッキング |
 | `SLEEP` | `ms -> SLEEP` | 最大`ms`のSleep。タイマーまたは任意の有効IRQで復帰 |
-| `VMSIZE` | `VMSIZE` | 現在のPico設定におけるVM arenaサイズをbyte単位で取得 |
 
 `LED1`はCYW43チップ経由で制御されるオンボードLEDです。RP2350のGPIO PWM出力ではないため、
 `PWM_SET`の対象にはできません。
